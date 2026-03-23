@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
-import { getRenderingEngine, Enums, metaData } from '@cornerstonejs/core';
+import { useState, useCallback } from 'react';
+import { getRenderingEngine, metaData } from '@cornerstonejs/core';
+import { annotation } from '@cornerstonejs/tools';
 import { useCornerstone } from './hooks/useCornerstone';
 import { Header } from './components/Header';
 import { Toolbar } from './components/Toolbar';
@@ -7,12 +8,11 @@ import { Viewport, VIEWPORT_ID, RENDERING_ENGINE_ID } from './components/Viewpor
 import { DropZone } from './components/DropZone';
 import { MetadataPanel } from './components/MetadataPanel';
 import { ToastContainer } from './components/Toast';
-import { ThumbnailPanel } from './components/ThumbnailPanel';
-import { validateDicomFiles, loadLocalFiles } from './core/imageLoader';
-import { extractMetadata } from './core/metadataProvider';
+import { SeriesPanel } from './components/SeriesPanel';
+import { loadAndGroupFiles } from './core/seriesManager';
 import { setActiveTool } from './core/toolSetup';
 import { useToast } from './hooks/useToast';
-import type { ActiveTool, WLPreset, DicomMetadata } from './types/dicom';
+import type { ActiveTool, WLPreset, DicomMetadata, SeriesInfo } from './types/dicom';
 import './styles/globals.css';
 
 const appStyle: React.CSSProperties = {
@@ -77,23 +77,6 @@ const errorStyle: React.CSSProperties = {
   color: 'var(--accent-error)',
 };
 
-// Known transfer syntax UIDs that require unsupported codecs
-const UNSUPPORTED_TRANSFER_SYNTAXES = [
-  '1.2.840.10008.1.2.4.90', // JPEG 2000 Lossless
-  '1.2.840.10008.1.2.4.91', // JPEG 2000
-  '1.2.840.10008.1.2.4.57', // JPEG Lossless
-  '1.2.840.10008.1.2.4.70', // JPEG Lossless (Default)
-  '1.2.840.10008.1.2.5',    // RLE Lossless
-];
-
-function isTransferSyntaxError(message: string): boolean {
-  return (
-    message.includes('transfer syntax') ||
-    message.includes('TransferSyntax') ||
-    UNSUPPORTED_TRANSFER_SYNTAXES.some((uid) => message.includes(uid))
-  );
-}
-
 function App() {
   const { ready, error } = useCornerstone();
   const [filename, setFilename] = useState<string | null>(null);
@@ -105,9 +88,14 @@ function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [metadata, setMetadata] = useState<DicomMetadata | null>(null);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [viewportError, setViewportError] = useState<string | null>(null);
   const { toasts, addToast, removeToast } = useToast();
+
+  // Series management state
+  const [seriesList, setSeriesList] = useState<SeriesInfo[]>([]);
+  const [activeSeriesIndex, setActiveSeriesIndex] = useState(0);
+  const [currentSlice, setCurrentSlice] = useState(0);
+  const [totalSlices, setTotalSlices] = useState(0);
 
   // Callbacks from Viewport component
   const handleImageRendered = useCallback((imageId: string) => {
@@ -160,7 +148,19 @@ function App() {
   }, []);
 
   const handleImageLoadFailed = useCallback((errorMsg: string) => {
-    if (isTransferSyntaxError(errorMsg)) {
+    const UNSUPPORTED_TRANSFER_SYNTAXES = [
+      '1.2.840.10008.1.2.4.90',
+      '1.2.840.10008.1.2.4.91',
+      '1.2.840.10008.1.2.4.57',
+      '1.2.840.10008.1.2.4.70',
+      '1.2.840.10008.1.2.5',
+    ];
+    const isTransferSyntaxError =
+      errorMsg.includes('transfer syntax') ||
+      errorMsg.includes('TransferSyntax') ||
+      UNSUPPORTED_TRANSFER_SYNTAXES.some((uid) => errorMsg.includes(uid));
+
+    if (isTransferSyntaxError) {
       setViewportError(`非対応の転送構文です: ${errorMsg}`);
     } else {
       setViewportError(null);
@@ -181,31 +181,87 @@ function App() {
   }, []);
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
-    const { valid, invalid } = await validateDicomFiles(files);
-    if (invalid.length > 0) {
-      console.warn('Invalid DICOM files:', invalid);
-      addToast(
-        `無効なDICOMファイル: ${invalid.join(', ')}`,
-        'error',
-      );
+    const { seriesList: newSeriesList, skipped } = await loadAndGroupFiles(files);
+
+    if (skipped.length > 0) {
+      addToast(`スキップされたファイル: ${skipped.join(', ')}`, 'error');
     }
-    if (valid.length === 0) {
+    if (newSeriesList.length === 0) {
       addToast('有効なDICOMファイルが見つかりません', 'error');
       return;
     }
 
-    const ids = loadLocalFiles(valid);
-    setImageIds(ids);
+    setSeriesList(newSeriesList);
+    setActiveSeriesIndex(0);
+    setCurrentSlice(0);
+    setTotalSlices(newSeriesList[0].imageCount);
+    setImageIds(newSeriesList[0].imageIds);
     setMetadata(null);
-    setActiveImageIndex(0);
     setViewportError(null);
 
-    if (valid.length === 1) {
-      setFilename(valid[0].name);
+    const totalFiles = newSeriesList.reduce((sum, s) => sum + s.imageCount, 0);
+    if (files.length === 1) {
+      setFilename(files[0].name);
     } else {
-      setFilename(`${valid[0].name} (+${valid.length - 1})`);
+      setFilename(`${files[0].name} (+${totalFiles - 1})`);
     }
   }, [addToast]);
+
+  const handleSeriesSelect = useCallback((index: number) => {
+    setActiveSeriesIndex(index);
+    const series = seriesList[index];
+    if (!series) return;
+    setImageIds(series.imageIds);
+    setCurrentSlice(0);
+    setTotalSlices(series.imageCount);
+    setMetadata(null);
+    setViewportError(null);
+  }, [seriesList]);
+
+  const handleSliceChange = useCallback((currentIndex: number, total: number) => {
+    setCurrentSlice(currentIndex);
+    setTotalSlices(total);
+  }, []);
+
+  const handlePrevSlice = useCallback(() => {
+    if (currentSlice <= 0) return;
+    const newIdx = currentSlice - 1;
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return;
+    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    if (!viewport) return;
+    viewport.setImageIdIndex(newIdx).then(() => {
+      viewport.render();
+    }).catch(console.error);
+  }, [currentSlice]);
+
+  const handleNextSlice = useCallback(() => {
+    if (currentSlice >= totalSlices - 1) return;
+    const newIdx = currentSlice + 1;
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return;
+    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    if (!viewport) return;
+    viewport.setImageIdIndex(newIdx).then(() => {
+      viewport.render();
+    }).catch(console.error);
+  }, [currentSlice, totalSlices]);
+
+  const handleReset = useCallback(() => {
+    // Clear all annotations
+    try {
+      annotation.state.removeAllAnnotations();
+    } catch (e) {
+      console.warn('Failed to remove annotations:', e);
+    }
+    // Reset camera
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return;
+    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    if (!viewport) return;
+    viewport.resetCamera();
+    viewport.render();
+  }, []);
 
   const handleVoiChange = useCallback((wc: number, ww: number) => {
     setWindowCenter(wc);
@@ -218,6 +274,9 @@ function App() {
       zoom: 'Zoom',
       pan: 'Pan',
       rotate: 'TrackballRotate',
+      length: 'Length',
+      angle: 'Angle',
+      arrowAnnotate: 'ArrowAnnotate',
     };
     setActiveTool(toolNameMap[tool]);
     setActiveToolState(tool);
@@ -256,8 +315,8 @@ function App() {
     setRightPanelOpen((prev) => !prev);
   }, []);
 
-  const handleThumbnailSelect = useCallback((index: number) => {
-    setActiveImageIndex(index);
+  const handleSliceSelect = useCallback((index: number) => {
+    setCurrentSlice(index);
     const engine = getRenderingEngine(RENDERING_ENGINE_ID);
     if (!engine) return;
     const viewport = engine.getStackViewport(VIEWPORT_ID);
@@ -296,19 +355,26 @@ function App() {
         windowWidth={windowWidth}
         leftPanelOpen={leftPanelOpen}
         rightPanelOpen={rightPanelOpen}
+        currentSlice={currentSlice}
+        totalSlices={totalSlices}
         onToolChange={handleToolChange}
         onPresetSelect={handlePresetSelect}
         onFitToWindow={handleFitToWindow}
         onToggleLeftPanel={handleToggleLeftPanel}
         onToggleRightPanel={handleToggleRightPanel}
+        onPrevSlice={handlePrevSlice}
+        onNextSlice={handleNextSlice}
+        onReset={handleReset}
       />
       <div style={bodyStyle}>
         {leftPanelOpen && (
           <aside style={leftPanelStyle}>
-            <ThumbnailPanel
-              imageIds={imageIds}
-              activeIndex={activeImageIndex}
-              onSelect={handleThumbnailSelect}
+            <SeriesPanel
+              seriesList={seriesList}
+              activeSeriesIndex={activeSeriesIndex}
+              activeSliceIndex={currentSlice}
+              onSeriesSelect={handleSeriesSelect}
+              onSliceSelect={handleSliceSelect}
             />
           </aside>
         )}
@@ -319,6 +385,7 @@ function App() {
               onVoiChange={handleVoiChange}
               onImageRendered={handleImageRendered}
               onImageLoadFailed={handleImageLoadFailed}
+              onSliceChange={handleSliceChange}
               error={viewportError}
             />
           )}
