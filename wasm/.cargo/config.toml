@@ -1,0 +1,7 @@
+[build]
+# Use the GNU toolchain to avoid the MSVC link.exe conflict on Windows
+# (Git Bash's /usr/bin/link shadows MSVC link.exe)
+rustflags = []
+
+[toolchain]
+channel = "stable-x86_64-pc-windows-gnu"
