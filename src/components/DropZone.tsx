@@ -1,4 +1,5 @@
-import { useRef, useState, useCallback, DragEvent, ChangeEvent } from 'react';
+import { useRef, useState, useCallback } from 'react';
+import type { DragEvent, ChangeEvent } from 'react';
 import { Upload } from 'lucide-react';
 import styles from './DropZone.module.css';
 
