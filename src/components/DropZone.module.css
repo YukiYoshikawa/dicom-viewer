@@ -1,0 +1,68 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg-deepest);
+  border: 2px dashed var(--border-default);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  z-index: 10;
+}
+
+.overlay.dragging {
+  border-color: var(--accent);
+  background: rgba(74, 158, 255, 0.05);
+}
+
+.overlay:hover {
+  border-color: var(--accent);
+  background: rgba(74, 158, 255, 0.03);
+}
+
+.icon {
+  color: var(--text-disabled);
+  transition: color var(--transition-fast);
+}
+
+.overlay:hover .icon,
+.overlay.dragging .icon {
+  color: var(--accent);
+}
+
+.text {
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.subtext {
+  color: var(--text-disabled);
+  font-size: var(--font-size-sm);
+}
+
+.fileButton {
+  padding: 6px 16px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.fileButton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.08);
+}
+
+.fileInput {
+  display: none;
+}
