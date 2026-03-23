@@ -1,13 +1,15 @@
-import { useState, useCallback } from 'react';
-import { getRenderingEngine } from '@cornerstonejs/core';
+import { useState, useCallback, useEffect } from 'react';
+import { getRenderingEngine, Enums } from '@cornerstonejs/core';
 import { useCornerstone } from './hooks/useCornerstone';
 import { Header } from './components/Header';
 import { Toolbar } from './components/Toolbar';
 import { Viewport, VIEWPORT_ID, RENDERING_ENGINE_ID } from './components/Viewport';
 import { DropZone } from './components/DropZone';
+import { MetadataPanel } from './components/MetadataPanel';
 import { validateDicomFiles, loadLocalFiles } from './core/imageLoader';
+import { extractMetadata } from './core/metadataProvider';
 import { setActiveTool } from './core/toolSetup';
-import type { ActiveTool, WLPreset } from './types/dicom';
+import type { ActiveTool, WLPreset, DicomMetadata } from './types/dicom';
 import './styles/globals.css';
 
 const appStyle: React.CSSProperties = {
@@ -82,6 +84,27 @@ function App() {
   const [activeTool, setActiveToolState] = useState<ActiveTool>('windowLevel');
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [metadata, setMetadata] = useState<DicomMetadata | null>(null);
+
+  // Listen for Cornerstone IMAGE_RENDERED events to extract metadata
+  useEffect(() => {
+    const element = document.querySelector('[data-viewport-uid]') as HTMLElement | null;
+    if (!element) return;
+
+    const handleImageRendered = (evt: Event) => {
+      const customEvt = evt as CustomEvent;
+      const imageId: string | undefined = customEvt.detail?.imageId;
+      if (imageId) {
+        const meta = extractMetadata(imageId);
+        if (meta) setMetadata(meta);
+      }
+    };
+
+    element.addEventListener(Enums.Events.IMAGE_RENDERED, handleImageRendered);
+    return () => {
+      element.removeEventListener(Enums.Events.IMAGE_RENDERED, handleImageRendered);
+    };
+  });
 
   const handleToggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -104,6 +127,7 @@ function App() {
 
     const ids = loadLocalFiles(valid);
     setImageIds(ids);
+    setMetadata(null);
 
     if (valid.length === 1) {
       setFilename(valid[0].name);
@@ -216,17 +240,7 @@ function App() {
         </main>
         {rightPanelOpen && (
           <aside style={rightPanelStyle}>
-            {/* Metadata panel - Task 10 */}
-            {imageIds.length > 0 && (
-              <div style={{
-                padding: '12px',
-                color: 'var(--text-secondary)',
-                fontSize: 'var(--font-size-sm)',
-              }}>
-                <div>WC: {Math.round(windowCenter)}</div>
-                <div>WW: {Math.round(windowWidth)}</div>
-              </div>
-            )}
+            <MetadataPanel metadata={metadata} />
           </aside>
         )}
       </div>
