@@ -1,0 +1,99 @@
+.container {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 260px;
+  max-width: 380px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-dropdown);
+  pointer-events: all;
+  animation: slideIn 200ms ease-out forwards;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.toast.info {
+  border-left: 3px solid var(--accent);
+}
+
+.toast.error {
+  border-left: 3px solid var(--accent-error);
+}
+
+.toast.success {
+  border-left: 3px solid var(--accent-success);
+}
+
+.icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.icon.info {
+  color: var(--accent);
+}
+
+.icon.error {
+  color: var(--accent-error);
+}
+
+.icon.success {
+  color: var(--accent-success);
+}
+
+.text {
+  flex: 1;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.closeButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-disabled);
+  padding: 0;
+  border-radius: 4px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.closeButton:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

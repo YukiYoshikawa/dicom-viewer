@@ -6,9 +6,11 @@ import { Toolbar } from './components/Toolbar';
 import { Viewport, VIEWPORT_ID, RENDERING_ENGINE_ID } from './components/Viewport';
 import { DropZone } from './components/DropZone';
 import { MetadataPanel } from './components/MetadataPanel';
+import { ToastContainer } from './components/Toast';
 import { validateDicomFiles, loadLocalFiles } from './core/imageLoader';
 import { extractMetadata } from './core/metadataProvider';
 import { setActiveTool } from './core/toolSetup';
+import { useToast } from './hooks/useToast';
 import type { ActiveTool, WLPreset, DicomMetadata } from './types/dicom';
 import './styles/globals.css';
 
@@ -85,6 +87,7 @@ function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [metadata, setMetadata] = useState<DicomMetadata | null>(null);
+  const { toasts, addToast, removeToast } = useToast();
 
   // Listen for Cornerstone IMAGE_RENDERED events to extract metadata
   useEffect(() => {
@@ -122,8 +125,15 @@ function App() {
     const { valid, invalid } = await validateDicomFiles(files);
     if (invalid.length > 0) {
       console.warn('Invalid DICOM files:', invalid);
+      addToast(
+        `無効なDICOMファイル: ${invalid.join(', ')}`,
+        'error',
+      );
     }
-    if (valid.length === 0) return;
+    if (valid.length === 0) {
+      addToast('有効なDICOMファイルが見つかりません', 'error');
+      return;
+    }
 
     const ids = loadLocalFiles(valid);
     setImageIds(ids);
@@ -244,6 +254,7 @@ function App() {
           </aside>
         )}
       </div>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
