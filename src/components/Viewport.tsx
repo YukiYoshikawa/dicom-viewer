@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { RenderingEngine, Enums } from '@cornerstonejs/core';
+import { RenderingEngine, Enums, eventTarget } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
 import { AlertCircle } from 'lucide-react';
 import { createToolGroup } from '../core/toolSetup';
@@ -13,12 +13,21 @@ interface ViewportProps {
   onVoiChange?: (windowCenter: number, windowWidth: number) => void;
   onImageRendered?: (imageId: string) => void;
   onImageLoadFailed?: (errorMessage: string) => void;
+  onSliceChange?: (currentIndex: number, totalSlices: number) => void;
   error?: string | null;
 }
 
-export function Viewport({ imageIds, onVoiChange, onImageRendered, onImageLoadFailed, error }: ViewportProps) {
+export function Viewport({
+  imageIds,
+  onVoiChange,
+  onImageRendered,
+  onImageLoadFailed,
+  onSliceChange,
+  error,
+}: ViewportProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<RenderingEngine | null>(null);
+  const currentSliceRef = useRef<number>(0);
 
   // Store latest callbacks in refs so the init useEffect doesn't re-run
   const onImageRenderedRef = useRef(onImageRendered);
@@ -27,6 +36,8 @@ export function Viewport({ imageIds, onVoiChange, onImageRendered, onImageLoadFa
   onImageLoadFailedRef.current = onImageLoadFailed;
   const onVoiChangeRef = useRef(onVoiChange);
   onVoiChangeRef.current = onVoiChange;
+  const onSliceChangeRef = useRef(onSliceChange);
+  onSliceChangeRef.current = onSliceChange;
 
   // Create the rendering engine and enable the element on mount
   useEffect(() => {
@@ -45,7 +56,47 @@ export function Viewport({ imageIds, onVoiChange, onImageRendered, onImageLoadFa
     renderingEngine.enableElement(viewportInput);
     createToolGroup(VIEWPORT_ID, RENDERING_ENGINE_ID);
 
+    // Listen for IMAGE_RENDERED to track slice changes
+    const handleImageRenderedEvent = () => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      const viewport = engine.getStackViewport(VIEWPORT_ID);
+      if (!viewport) return;
+
+      const idx = viewport.getCurrentImageIdIndex();
+      const total = viewport.getImageIds().length;
+
+      // Notify parent with the current image ID for metadata
+      const currentImageId = viewport.getCurrentImageId();
+      if (currentImageId && onImageRenderedRef.current) {
+        onImageRenderedRef.current(currentImageId);
+      }
+
+      // Report VOI
+      try {
+        const voiRange = viewport.getProperties().voiRange;
+        if (voiRange && onVoiChangeRef.current) {
+          const ww = voiRange.upper - voiRange.lower;
+          const wc = voiRange.lower + ww / 2;
+          onVoiChangeRef.current(wc, ww);
+        }
+      } catch {
+        // VOI not yet available
+      }
+
+      // Notify slice change if index changed
+      if (idx !== currentSliceRef.current || total > 0) {
+        currentSliceRef.current = idx;
+        if (onSliceChangeRef.current) {
+          onSliceChangeRef.current(idx, total);
+        }
+      }
+    };
+
+    element.addEventListener(Enums.Events.IMAGE_RENDERED, handleImageRenderedEvent);
+
     return () => {
+      element.removeEventListener(Enums.Events.IMAGE_RENDERED, handleImageRenderedEvent);
       renderingEngine.destroy();
       engineRef.current = null;
     };
@@ -63,24 +114,12 @@ export function Viewport({ imageIds, onVoiChange, onImageRendered, onImageLoadFa
 
     try {
       await viewport.setStack(imageIds, 0);
+      currentSliceRef.current = 0;
       viewport.render();
 
-      // Notify parent with the loaded imageId
-      const currentImageId = imageIds[0];
-      if (onImageRenderedRef.current) {
-        onImageRenderedRef.current(currentImageId);
-      }
-
-      // Report initial VOI
-      try {
-        const voiRange = viewport.getProperties().voiRange;
-        if (voiRange && onVoiChangeRef.current) {
-          const ww = voiRange.upper - voiRange.lower;
-          const wc = voiRange.lower + ww / 2;
-          onVoiChangeRef.current(wc, ww);
-        }
-      } catch {
-        // VOI not yet available
+      // Notify slice count immediately after stack set
+      if (onSliceChangeRef.current) {
+        onSliceChangeRef.current(0, imageIds.length);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -101,6 +140,11 @@ export function Viewport({ imageIds, onVoiChange, onImageRendered, onImageLoadFa
         className={styles.viewport}
         tabIndex={-1}
       />
+      {imageIds.length > 1 && (
+        <div className={styles.sliceOverlay}>
+          {currentSliceRef.current + 1} / {imageIds.length}
+        </div>
+      )}
       {error && (
         <div className={styles.errorOverlay} role="alert">
           <AlertCircle size={32} />

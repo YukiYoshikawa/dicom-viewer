@@ -19,3 +19,18 @@
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
 }
+
+.sliceOverlay {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  font-size: var(--font-size-xs);
+  color: rgba(224, 224, 232, 0.75);
+  background: rgba(10, 10, 15, 0.6);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 4;
+  letter-spacing: 0.03em;
+}
