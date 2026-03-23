@@ -1,9 +1,13 @@
 import { useState, useCallback } from 'react';
+import { getRenderingEngine } from '@cornerstonejs/core';
 import { useCornerstone } from './hooks/useCornerstone';
 import { Header } from './components/Header';
-import { Viewport } from './components/Viewport';
+import { Toolbar } from './components/Toolbar';
+import { Viewport, VIEWPORT_ID, RENDERING_ENGINE_ID } from './components/Viewport';
 import { DropZone } from './components/DropZone';
 import { validateDicomFiles, loadLocalFiles } from './core/imageLoader';
+import { setActiveTool } from './core/toolSetup';
+import type { ActiveTool, WLPreset } from './types/dicom';
 import './styles/globals.css';
 
 const appStyle: React.CSSProperties = {
@@ -75,6 +79,9 @@ function App() {
   const [imageIds, setImageIds] = useState<string[]>([]);
   const [windowCenter, setWindowCenter] = useState<number>(40);
   const [windowWidth, setWindowWidth] = useState<number>(400);
+  const [activeTool, setActiveToolState] = useState<ActiveTool>('windowLevel');
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   const handleToggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -98,7 +105,6 @@ function App() {
     const ids = loadLocalFiles(valid);
     setImageIds(ids);
 
-    // Use the first file's name as display name
     if (valid.length === 1) {
       setFilename(valid[0].name);
     } else {
@@ -109,6 +115,50 @@ function App() {
   const handleVoiChange = useCallback((wc: number, ww: number) => {
     setWindowCenter(wc);
     setWindowWidth(ww);
+  }, []);
+
+  const handleToolChange = useCallback((tool: ActiveTool) => {
+    const toolNameMap: Record<ActiveTool, string> = {
+      windowLevel: 'WindowLevel',
+      zoom: 'Zoom',
+      pan: 'Pan',
+      rotate: 'TrackballRotate',
+    };
+    setActiveTool(toolNameMap[tool]);
+    setActiveToolState(tool);
+  }, []);
+
+  const handlePresetSelect = useCallback((preset: WLPreset) => {
+    setWindowCenter(preset.windowCenter);
+    setWindowWidth(preset.windowWidth);
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return;
+    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    if (!viewport) return;
+    viewport.setProperties({
+      voiRange: {
+        lower: preset.windowCenter - preset.windowWidth / 2,
+        upper: preset.windowCenter + preset.windowWidth / 2,
+      },
+    });
+    viewport.render();
+  }, []);
+
+  const handleFitToWindow = useCallback(() => {
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return;
+    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    if (!viewport) return;
+    viewport.resetCamera();
+    viewport.render();
+  }, []);
+
+  const handleToggleLeftPanel = useCallback(() => {
+    setLeftPanelOpen((prev) => !prev);
+  }, []);
+
+  const handleToggleRightPanel = useCallback(() => {
+    setRightPanelOpen((prev) => !prev);
   }, []);
 
   if (error) {
@@ -134,10 +184,24 @@ function App() {
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
       />
+      <Toolbar
+        activeTool={activeTool}
+        windowCenter={windowCenter}
+        windowWidth={windowWidth}
+        leftPanelOpen={leftPanelOpen}
+        rightPanelOpen={rightPanelOpen}
+        onToolChange={handleToolChange}
+        onPresetSelect={handlePresetSelect}
+        onFitToWindow={handleFitToWindow}
+        onToggleLeftPanel={handleToggleLeftPanel}
+        onToggleRightPanel={handleToggleRightPanel}
+      />
       <div style={bodyStyle}>
-        <aside style={leftPanelStyle}>
-          {/* Thumbnail panel - future task */}
-        </aside>
+        {leftPanelOpen && (
+          <aside style={leftPanelStyle}>
+            {/* Thumbnail panel - Task 12 */}
+          </aside>
+        )}
         <main style={centerPanelStyle}>
           {ready && (
             <Viewport
@@ -150,19 +214,21 @@ function App() {
             onFilesSelected={handleFilesSelected}
           />
         </main>
-        <aside style={rightPanelStyle}>
-          {/* Metadata / controls panel - future task */}
-          {imageIds.length > 0 && (
-            <div style={{
-              padding: '12px',
-              color: 'var(--text-secondary)',
-              fontSize: 'var(--font-size-sm)',
-            }}>
-              <div>WC: {Math.round(windowCenter)}</div>
-              <div>WW: {Math.round(windowWidth)}</div>
-            </div>
-          )}
-        </aside>
+        {rightPanelOpen && (
+          <aside style={rightPanelStyle}>
+            {/* Metadata panel - Task 10 */}
+            {imageIds.length > 0 && (
+              <div style={{
+                padding: '12px',
+                color: 'var(--text-secondary)',
+                fontSize: 'var(--font-size-sm)',
+              }}>
+                <div>WC: {Math.round(windowCenter)}</div>
+                <div>WW: {Math.round(windowWidth)}</div>
+              </div>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );
