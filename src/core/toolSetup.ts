@@ -6,6 +6,9 @@ import {
   PanTool,
   TrackballRotateTool,
   StackScrollTool,
+  LengthTool,
+  AngleTool,
+  ArrowAnnotateTool,
   Enums as csToolsEnums,
 } from '@cornerstonejs/tools';
 
@@ -21,6 +24,9 @@ export function setupTools(): void {
   addTool(PanTool);
   addTool(TrackballRotateTool);
   addTool(StackScrollTool);
+  addTool(LengthTool);
+  addTool(AngleTool);
+  addTool(ArrowAnnotateTool);
 
   toolGroupCreated = true;
 }
@@ -43,6 +49,9 @@ export function createToolGroup(
   toolGroup.addTool(PanTool.toolName);
   toolGroup.addTool(TrackballRotateTool.toolName);
   toolGroup.addTool(StackScrollTool.toolName);
+  toolGroup.addTool(LengthTool.toolName);
+  toolGroup.addTool(AngleTool.toolName);
+  toolGroup.addTool(ArrowAnnotateTool.toolName);
 
   toolGroup.addViewport(viewportId, renderingEngineId);
 
@@ -78,6 +87,9 @@ export function setActiveTool(toolName: string): void {
     ZoomTool.toolName,
     PanTool.toolName,
     TrackballRotateTool.toolName,
+    LengthTool.toolName,
+    AngleTool.toolName,
+    ArrowAnnotateTool.toolName,
   ];
 
   for (const name of tools) {
