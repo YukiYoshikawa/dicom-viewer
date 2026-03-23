@@ -50,4 +50,15 @@ export const WL_PRESETS: WLPreset[] = [
   { label: '腹部', windowCenter: 60, windowWidth: 400 },
 ];
 
-export type ActiveTool = 'windowLevel' | 'zoom' | 'pan' | 'rotate';
+export type ActiveTool =
+  | 'windowLevel' | 'zoom' | 'pan' | 'rotate'
+  | 'length' | 'angle' | 'arrowAnnotate';
+
+export interface SeriesInfo {
+  seriesInstanceUid: string;
+  seriesNumber: string;
+  seriesDescription: string;
+  modality: string;
+  imageIds: string[];
+  imageCount: number;
+}
