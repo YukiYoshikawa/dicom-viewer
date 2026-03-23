@@ -7,6 +7,7 @@ import { Viewport, VIEWPORT_ID, RENDERING_ENGINE_ID } from './components/Viewpor
 import { DropZone } from './components/DropZone';
 import { MetadataPanel } from './components/MetadataPanel';
 import { ToastContainer } from './components/Toast';
+import { ThumbnailPanel } from './components/ThumbnailPanel';
 import { validateDicomFiles, loadLocalFiles } from './core/imageLoader';
 import { extractMetadata } from './core/metadataProvider';
 import { setActiveTool } from './core/toolSetup';
@@ -87,6 +88,7 @@ function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [metadata, setMetadata] = useState<DicomMetadata | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const { toasts, addToast, removeToast } = useToast();
 
   // Listen for Cornerstone IMAGE_RENDERED events to extract metadata
@@ -138,13 +140,14 @@ function App() {
     const ids = loadLocalFiles(valid);
     setImageIds(ids);
     setMetadata(null);
+    setActiveImageIndex(0);
 
     if (valid.length === 1) {
       setFilename(valid[0].name);
     } else {
       setFilename(`${valid[0].name} (+${valid.length - 1})`);
     }
-  }, []);
+  }, [addToast]);
 
   const handleVoiChange = useCallback((wc: number, ww: number) => {
     setWindowCenter(wc);
@@ -195,6 +198,17 @@ function App() {
     setRightPanelOpen((prev) => !prev);
   }, []);
 
+  const handleThumbnailSelect = useCallback((index: number) => {
+    setActiveImageIndex(index);
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return;
+    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    if (!viewport) return;
+    viewport.setImageIdIndex(index).then(() => {
+      viewport.render();
+    }).catch(console.error);
+  }, []);
+
   if (error) {
     return (
       <div style={errorStyle}>
@@ -233,7 +247,11 @@ function App() {
       <div style={bodyStyle}>
         {leftPanelOpen && (
           <aside style={leftPanelStyle}>
-            {/* Thumbnail panel - Task 12 */}
+            <ThumbnailPanel
+              imageIds={imageIds}
+              activeIndex={activeImageIndex}
+              onSelect={handleThumbnailSelect}
+            />
           </aside>
         )}
         <main style={centerPanelStyle}>
