@@ -6,11 +6,11 @@ import { init as cornerstoneToolsInit } from '@cornerstonejs/tools';
 const INIT_KEY = '__cornerstoneInitialized__';
 
 export async function initCornerstone(): Promise<void> {
-  if ((window as Record<string, unknown>)[INIT_KEY]) return;
+  if ((window as unknown as Record<string, unknown>)[INIT_KEY]) return;
 
   await coreInit();
   await dicomImageLoaderInit();
   cornerstoneToolsInit();
 
-  (window as Record<string, unknown>)[INIT_KEY] = true;
+  (window as unknown as Record<string, unknown>)[INIT_KEY] = true;
 }

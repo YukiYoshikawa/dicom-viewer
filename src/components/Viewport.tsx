@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { RenderingEngine, Enums, eventTarget } from '@cornerstonejs/core';
+import { RenderingEngine, Enums } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
 import { AlertCircle } from 'lucide-react';
 import { createToolGroup } from '../core/toolSetup';
