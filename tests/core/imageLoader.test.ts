@@ -15,7 +15,21 @@ describe('imageLoader', () => {
   });
 
   it('should reject files too small to be DICOM', () => {
-    const buffer = new ArrayBuffer(10);
+    const buffer = new ArrayBuffer(2);
     expect(isDicomFile(buffer)).toBe(false);
+  });
+
+  it('should detect DICOM without preamble (group 0x0008)', () => {
+    const buffer = new ArrayBuffer(4);
+    const view = new Uint8Array(buffer);
+    view[0] = 0x08; view[1] = 0x00;
+    expect(isDicomFile(buffer)).toBe(true);
+  });
+
+  it('should detect DICOM without preamble (group 0x0002)', () => {
+    const buffer = new ArrayBuffer(4);
+    const view = new Uint8Array(buffer);
+    view[0] = 0x02; view[1] = 0x00;
+    expect(isDicomFile(buffer)).toBe(true);
   });
 });

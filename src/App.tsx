@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { getRenderingEngine, Enums } from '@cornerstonejs/core';
+import { getRenderingEngine, Enums, metaData } from '@cornerstonejs/core';
 import { useCornerstone } from './hooks/useCornerstone';
 import { Header } from './components/Header';
 import { Toolbar } from './components/Toolbar';
@@ -109,40 +109,64 @@ function App() {
   const [viewportError, setViewportError] = useState<string | null>(null);
   const { toasts, addToast, removeToast } = useToast();
 
-  // Listen for Cornerstone IMAGE_RENDERED events to extract metadata
-  useEffect(() => {
-    const element = document.querySelector('[data-viewport-uid]') as HTMLElement | null;
-    if (!element) return;
+  // Callbacks from Viewport component
+  const handleImageRendered = useCallback((imageId: string) => {
+    setViewportError(null);
 
-    const handleImageRendered = (evt: Event) => {
-      const customEvt = evt as CustomEvent;
-      const imageId: string | undefined = customEvt.detail?.imageId;
-      if (imageId) {
-        const meta = extractMetadata(imageId);
-        if (meta) setMetadata(meta);
-      }
-      // Clear any previous load error on successful render
+    try {
+      const patient = metaData.get('patientModule', imageId);
+      const study = metaData.get('generalStudyModule', imageId);
+      const series = metaData.get('generalSeriesModule', imageId);
+      const imagePixel = metaData.get('imagePixelModule', imageId);
+      const voiLut = metaData.get('voiLutModule', imageId);
+      const sopCommon = metaData.get('sopCommonModule', imageId);
+      const transferSyntaxMeta = metaData.get('transferSyntax', imageId);
+
+      const meta: DicomMetadata = {
+        patient: {
+          name: patient?.patientName?.Alphabetic ?? patient?.patientName ?? '',
+          id: patient?.patientId ?? '',
+          birthDate: patient?.patientBirthDate ?? '',
+          sex: patient?.patientSex ?? '',
+        },
+        study: {
+          date: study?.studyDate ?? '',
+          description: study?.studyDescription ?? '',
+          accessionNumber: study?.accessionNumber ?? '',
+        },
+        series: {
+          modality: series?.modality ?? '',
+          description: series?.seriesDescription ?? '',
+          number: String(series?.seriesNumber ?? ''),
+        },
+        image: {
+          rows: imagePixel?.rows ?? 0,
+          columns: imagePixel?.columns ?? 0,
+          bitsAllocated: imagePixel?.bitsAllocated ?? 0,
+          bitsStored: imagePixel?.bitsStored ?? 0,
+          windowCenter: Array.isArray(voiLut?.windowCenter)
+            ? voiLut.windowCenter[0] : (voiLut?.windowCenter ?? 0),
+          windowWidth: Array.isArray(voiLut?.windowWidth)
+            ? voiLut.windowWidth[0] : (voiLut?.windowWidth ?? 0),
+          transferSyntax: transferSyntaxMeta ?? '',
+          photometricInterpretation: imagePixel?.photometricInterpretation ?? '',
+          sopInstanceUid: sopCommon?.sopInstanceUID ?? '',
+        },
+      };
+      setMetadata(meta);
+    } catch (e) {
+      console.warn('Failed to extract metadata:', e);
+    }
+  }, []);
+
+  const handleImageLoadFailed = useCallback((errorMsg: string) => {
+    if (isTransferSyntaxError(errorMsg)) {
+      setViewportError(`非対応の転送構文です: ${errorMsg}`);
+    } else {
       setViewportError(null);
-    };
-
-    const handleImageLoadFailed = (evt: Event) => {
-      const customEvt = evt as CustomEvent;
-      const errorMsg: string = customEvt.detail?.error?.message ?? customEvt.detail?.message ?? '不明なエラー';
-      if (isTransferSyntaxError(errorMsg)) {
-        setViewportError(`非対応の転送構文です: ${errorMsg}`);
-      } else {
-        setViewportError(null);
-        addToast(`画像の読み込みに失敗しました: ${errorMsg}`, 'error');
-      }
-    };
-
-    element.addEventListener(Enums.Events.IMAGE_RENDERED, handleImageRendered);
-    element.addEventListener(Enums.Events.IMAGE_LOAD_FAILED, handleImageLoadFailed);
-    return () => {
-      element.removeEventListener(Enums.Events.IMAGE_RENDERED, handleImageRendered);
-      element.removeEventListener(Enums.Events.IMAGE_LOAD_FAILED, handleImageLoadFailed);
-    };
-  });
+      addToast(`画像の読み込みに失敗しました: ${errorMsg}`, 'error');
+    }
+  }, [addToast]);
 
   const handleToggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -293,6 +317,8 @@ function App() {
             <Viewport
               imageIds={imageIds}
               onVoiChange={handleVoiChange}
+              onImageRendered={handleImageRendered}
+              onImageLoadFailed={handleImageLoadFailed}
               error={viewportError}
             />
           )}
