@@ -1,2 +1,21 @@
 .container { width: 100%; height: 100%; position: relative; }
 .viewport { width: 100%; height: 100%; outline: none; }
+
+.errorOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--accent-error);
+  font-size: var(--font-size-md);
+  background: rgba(10, 10, 15, 0.9);
+  z-index: 5;
+}
+
+.errorDetail {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}

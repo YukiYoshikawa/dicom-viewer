@@ -77,6 +77,23 @@ const errorStyle: React.CSSProperties = {
   color: 'var(--accent-error)',
 };
 
+// Known transfer syntax UIDs that require unsupported codecs
+const UNSUPPORTED_TRANSFER_SYNTAXES = [
+  '1.2.840.10008.1.2.4.90', // JPEG 2000 Lossless
+  '1.2.840.10008.1.2.4.91', // JPEG 2000
+  '1.2.840.10008.1.2.4.57', // JPEG Lossless
+  '1.2.840.10008.1.2.4.70', // JPEG Lossless (Default)
+  '1.2.840.10008.1.2.5',    // RLE Lossless
+];
+
+function isTransferSyntaxError(message: string): boolean {
+  return (
+    message.includes('transfer syntax') ||
+    message.includes('TransferSyntax') ||
+    UNSUPPORTED_TRANSFER_SYNTAXES.some((uid) => message.includes(uid))
+  );
+}
+
 function App() {
   const { ready, error } = useCornerstone();
   const [filename, setFilename] = useState<string | null>(null);
@@ -89,6 +106,7 @@ function App() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [metadata, setMetadata] = useState<DicomMetadata | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [viewportError, setViewportError] = useState<string | null>(null);
   const { toasts, addToast, removeToast } = useToast();
 
   // Listen for Cornerstone IMAGE_RENDERED events to extract metadata
@@ -103,11 +121,26 @@ function App() {
         const meta = extractMetadata(imageId);
         if (meta) setMetadata(meta);
       }
+      // Clear any previous load error on successful render
+      setViewportError(null);
+    };
+
+    const handleImageLoadFailed = (evt: Event) => {
+      const customEvt = evt as CustomEvent;
+      const errorMsg: string = customEvt.detail?.error?.message ?? customEvt.detail?.message ?? '不明なエラー';
+      if (isTransferSyntaxError(errorMsg)) {
+        setViewportError(`非対応の転送構文です: ${errorMsg}`);
+      } else {
+        setViewportError(null);
+        addToast(`画像の読み込みに失敗しました: ${errorMsg}`, 'error');
+      }
     };
 
     element.addEventListener(Enums.Events.IMAGE_RENDERED, handleImageRendered);
+    element.addEventListener(Enums.Events.IMAGE_LOAD_FAILED, handleImageLoadFailed);
     return () => {
       element.removeEventListener(Enums.Events.IMAGE_RENDERED, handleImageRendered);
+      element.removeEventListener(Enums.Events.IMAGE_LOAD_FAILED, handleImageLoadFailed);
     };
   });
 
@@ -141,6 +174,7 @@ function App() {
     setImageIds(ids);
     setMetadata(null);
     setActiveImageIndex(0);
+    setViewportError(null);
 
     if (valid.length === 1) {
       setFilename(valid[0].name);
@@ -259,6 +293,7 @@ function App() {
             <Viewport
               imageIds={imageIds}
               onVoiChange={handleVoiChange}
+              error={viewportError}
             />
           )}
           <DropZone

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { RenderingEngine, Enums } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
+import { AlertCircle } from 'lucide-react';
 import { createToolGroup } from '../core/toolSetup';
 import styles from './Viewport.module.css';
 
@@ -10,9 +11,10 @@ export const RENDERING_ENGINE_ID = 'dicomRenderingEngine';
 interface ViewportProps {
   imageIds: string[];
   onVoiChange?: (windowCenter: number, windowWidth: number) => void;
+  error?: string | null;
 }
 
-export function Viewport({ imageIds, onVoiChange }: ViewportProps) {
+export function Viewport({ imageIds, onVoiChange, error }: ViewportProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<RenderingEngine | null>(null);
 
@@ -75,6 +77,13 @@ export function Viewport({ imageIds, onVoiChange }: ViewportProps) {
         className={styles.viewport}
         tabIndex={-1}
       />
+      {error && (
+        <div className={styles.errorOverlay} role="alert">
+          <AlertCircle size={32} />
+          <span>画像の読み込みに失敗しました</span>
+          <span className={styles.errorDetail}>{error}</span>
+        </div>
+      )}
     </div>
   );
 }
