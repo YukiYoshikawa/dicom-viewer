@@ -3,6 +3,7 @@ import { RenderingEngine, Enums } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
 import { AlertCircle } from 'lucide-react';
 import { createToolGroup } from '../core/toolSetup';
+import type { DicomMetadata } from '../types/dicom';
 import styles from './Viewport.module.css';
 
 export const VIEWPORT_ID = 'dicomViewport';
@@ -15,6 +16,14 @@ interface ViewportProps {
   onImageLoadFailed?: (errorMessage: string) => void;
   onSliceChange?: (currentIndex: number, totalSlices: number) => void;
   error?: string | null;
+  metadata?: DicomMetadata | null;
+  windowCenter?: number;
+  windowWidth?: number;
+}
+
+function formatDate(raw: string): string {
+  if (!raw || raw.length !== 8) return raw || '';
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 
 export function Viewport({
@@ -24,6 +33,9 @@ export function Viewport({
   onImageLoadFailed,
   onSliceChange,
   error,
+  metadata,
+  windowCenter,
+  windowWidth,
 }: ViewportProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<RenderingEngine | null>(null);
@@ -133,6 +145,9 @@ export function Viewport({
     loadImages();
   }, [loadImages]);
 
+  const wc = windowCenter ?? metadata?.image.windowCenter;
+  const ww = windowWidth ?? metadata?.image.windowWidth;
+
   return (
     <div className={styles.container}>
       <div
@@ -140,7 +155,48 @@ export function Viewport({
         className={styles.viewport}
         tabIndex={-1}
       />
-      {imageIds.length > 1 && (
+
+      {/* Four-corner overlays */}
+      {metadata && (
+        <>
+          {/* Top-left: Patient info */}
+          <div className={`${styles.overlay} ${styles.topLeft}`}>
+            {metadata.patient.name && <span>{metadata.patient.name}</span>}
+            {metadata.patient.id && <span>ID: {metadata.patient.id}</span>}
+            {metadata.patient.sex && <span>性別: {metadata.patient.sex}</span>}
+            {metadata.patient.birthDate && (
+              <span>生年月日: {formatDate(metadata.patient.birthDate)}</span>
+            )}
+          </div>
+
+          {/* Top-right: Study/Series info */}
+          <div className={`${styles.overlay} ${styles.topRight}`}>
+            {metadata.series.modality && <span>{metadata.series.modality}</span>}
+            {metadata.study.description && <span>{metadata.study.description}</span>}
+            {metadata.study.date && <span>検査日: {formatDate(metadata.study.date)}</span>}
+          </div>
+
+          {/* Bottom-left: Image info */}
+          <div className={`${styles.overlay} ${styles.bottomLeft}`}>
+            {imageIds.length > 1 && (
+              <span>
+                {currentSliceRef.current + 1} / {imageIds.length}
+              </span>
+            )}
+            {metadata.image.rows > 0 && (
+              <span>{metadata.image.columns} x {metadata.image.rows}</span>
+            )}
+          </div>
+
+          {/* Bottom-right: WC/WW */}
+          <div className={`${styles.overlay} ${styles.bottomRight}`}>
+            {wc !== undefined && wc !== 0 && <span>WC: {Math.round(wc)}</span>}
+            {ww !== undefined && ww !== 0 && <span>WW: {Math.round(ww)}</span>}
+          </div>
+        </>
+      )}
+
+      {imageIds.length > 1 && !metadata && (
         <div className={styles.sliceOverlay}>
           {currentSliceRef.current + 1} / {imageIds.length}
         </div>

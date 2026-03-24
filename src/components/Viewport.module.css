@@ -34,3 +34,45 @@
   z-index: 4;
   letter-spacing: 0.03em;
 }
+
+/* Four-corner DICOM info overlays */
+.overlay {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+  z-index: 4;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(224, 224, 232, 0.85);
+  background: rgba(10, 10, 15, 0.55);
+  border-radius: 4px;
+  padding: 4px 8px;
+  max-width: 45%;
+}
+
+.topLeft {
+  top: 8px;
+  left: 8px;
+}
+
+.topRight {
+  top: 8px;
+  right: 8px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.bottomLeft {
+  bottom: 8px;
+  left: 8px;
+}
+
+.bottomRight {
+  bottom: 8px;
+  right: 8px;
+  align-items: flex-end;
+  text-align: right;
+}
