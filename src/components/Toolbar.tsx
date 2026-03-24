@@ -3,7 +3,7 @@ import {
   Ruler, Compass, ArrowUpRight, RotateCcw, ChevronLeft, ChevronRight,
   FlipHorizontal2, FlipVertical2, Layers, Play, Pause, Plus, Minus,
   Camera, Printer, Circle, RectangleHorizontal, Pencil, Crosshair,
-  ArrowLeftRight, Zap, LayoutGrid, Layout,
+  ArrowLeftRight, Zap, LayoutGrid, Layout, Radar, Mic, MicOff,
 } from 'lucide-react';
 import type { ActiveTool, WLPreset, LayoutType } from '../types/dicom';
 import { WL_PRESETS } from '../types/dicom';
@@ -20,6 +20,10 @@ interface ToolbarProps {
   cineActive: boolean;
   cineFps: number;
   layout: LayoutType;
+  aiScoutEnabled: boolean;
+  voiceActive: boolean;
+  voiceSupported: boolean;
+  loadingProgress?: number | null;
   onToolChange: (tool: ActiveTool) => void;
   onPresetSelect: (preset: WLPreset) => void;
   onFitToWindow: () => void;
@@ -40,6 +44,9 @@ interface ToolbarProps {
   onScreenshot: () => void;
   onPrint: () => void;
   onLayoutChange: (layout: LayoutType) => void;
+  onToggleAiScout: () => void;
+  onNextKeyframe: () => void;
+  onToggleVoice: () => void;
 }
 
 const NAV_TOOL_BUTTONS: { tool: ActiveTool; Icon: React.ElementType; title: string }[] = [
@@ -72,6 +79,10 @@ export function Toolbar({
   cineActive,
   cineFps,
   layout,
+  aiScoutEnabled,
+  voiceActive,
+  voiceSupported,
+  loadingProgress,
   onToolChange,
   onPresetSelect,
   onFitToWindow,
@@ -92,6 +103,9 @@ export function Toolbar({
   onScreenshot,
   onPrint,
   onLayoutChange,
+  onToggleAiScout,
+  onNextKeyframe,
+  onToggleVoice,
 }: ToolbarProps) {
   const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const idx = parseInt(e.target.value, 10);
@@ -268,6 +282,37 @@ export function Toolbar({
 
       <div className={styles.separator} />
 
+      {/* AI Scout + Smart Reading (next keyframe) + Voice */}
+      <div className={styles.group}>
+        <button
+          className={`${styles.toolButton} ${aiScoutEnabled ? styles.active : ''}`}
+          onClick={onToggleAiScout}
+          title="AIスカウト 変化マップ"
+          aria-pressed={aiScoutEnabled}
+        >
+          <Radar size={16} />
+        </button>
+        <button
+          className={styles.toolButton}
+          onClick={onNextKeyframe}
+          title="次のキーフレーム (スマートリーディング)"
+        >
+          <Zap size={16} />
+        </button>
+        {voiceSupported && (
+          <button
+            className={`${styles.toolButton} ${voiceActive ? styles.active : ''}`}
+            onClick={onToggleVoice}
+            title={voiceActive ? '音声コマンド停止' : '音声コマンド開始'}
+            aria-pressed={voiceActive}
+          >
+            {voiceActive ? <Mic size={16} /> : <MicOff size={16} />}
+          </button>
+        )}
+      </div>
+
+      <div className={styles.separator} />
+
       {/* WL/WW display */}
       <div className={styles.group}>
         <div className={styles.voiDisplay}>
@@ -297,6 +342,14 @@ export function Toolbar({
           ))}
         </select>
       </div>
+
+      {/* Loading progress bar */}
+      {loadingProgress !== null && loadingProgress !== undefined && loadingProgress < 100 && (
+        <div className={styles.progressBar} title={`読み込み中: ${loadingProgress}%`}>
+          <div className={styles.progressFill} style={{ width: `${loadingProgress}%` }} />
+          <span className={styles.progressLabel}>{loadingProgress}%</span>
+        </div>
+      )}
 
       {/* Spacer pushes right controls to far right */}
       <div className={styles.spacer} />

@@ -57,6 +57,18 @@ export type ActiveTool =
 
 export type LayoutType = '1x1' | '1x2' | '2x2';
 
+export const MODALITY_PRESETS: Record<string, { wc: number; ww: number }> = {
+  CT: { wc: 40, ww: 400 },
+  MR: { wc: 500, ww: 1000 },
+  CR: { wc: 2048, ww: 4096 },
+  DX: { wc: 2048, ww: 4096 },
+  XA: { wc: 1500, ww: 3000 },
+  MG: { wc: 3000, ww: 6000 },
+  US: { wc: 128, ww: 256 },
+  PT: { wc: 5000, ww: 10000 },
+  NM: { wc: 500, ww: 1000 },
+};
+
 export interface SeriesInfo {
   seriesInstanceUid: string;
   seriesNumber: string;

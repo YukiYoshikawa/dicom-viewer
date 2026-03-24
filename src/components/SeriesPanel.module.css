@@ -180,3 +180,13 @@
 .sliceItem.activeSlice .sliceDot {
   background: var(--accent);
 }
+
+/* Importance score bar */
+.scoreBar {
+  height: 4px;
+  border-radius: 2px;
+  min-width: 2px;
+  max-width: 100%;
+  flex: 1;
+  transition: width 0.2s ease, background 0.2s ease;
+}

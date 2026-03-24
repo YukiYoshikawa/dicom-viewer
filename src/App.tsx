@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { getRenderingEngine, metaData } from '@cornerstonejs/core';
 import { annotation } from '@cornerstonejs/tools';
 import { useCornerstone } from './hooks/useCornerstone';
@@ -11,11 +11,15 @@ import { MeasurementPanel } from './components/MeasurementPanel';
 import { ViewportLayout } from './components/ViewportLayout';
 import { ToastContainer } from './components/Toast';
 import { SeriesPanel } from './components/SeriesPanel';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { loadAndGroupFiles } from './core/seriesManager';
 import { setActiveTool } from './core/toolSetup';
 import { undo, redo, clearHistory } from './core/annotationHistory';
+import { computeSliceImportanceDownsampled } from './core/wasmBridge';
+import { startVoiceRecognition, stopVoiceRecognition, isSpeechRecognitionSupported } from './core/voiceCommand';
 import { useToast } from './hooks/useToast';
 import type { ActiveTool, WLPreset, DicomMetadata, SeriesInfo, LayoutType } from './types/dicom';
+import { MODALITY_PRESETS } from './types/dicom';
 import './styles/globals.css';
 
 const appStyle: React.CSSProperties = {
@@ -103,7 +107,7 @@ function App() {
   const [currentSlice, setCurrentSlice] = useState(0);
   const [totalSlices, setTotalSlices] = useState(0);
 
-  // New state for Groups 3-4
+  // Groups 3-4
   const [layout, setLayout] = useState<LayoutType>('1x1');
   const [cineActive, setCineActive] = useState(false);
   const [cineFps, setCineFps] = useState(10);
@@ -111,6 +115,17 @@ function App() {
   const [flipH, setFlipH] = useState(false);
   const [flipV, setFlipV] = useState(false);
   const [rotation, setRotation] = useState(0);
+
+  // Group 6: AI Scout
+  const [aiScoutEnabled, setAiScoutEnabled] = useState(false);
+
+  // Group 7: Smart Reading
+  const [smartReadingScores, setSmartReadingScores] = useState<number[]>([]);
+  const [loadingProgress, setLoadingProgress] = useState<number | null>(null);
+
+  // Group 8: Voice Commands
+  const [voiceActive, setVoiceActive] = useState(false);
+  const voiceSupported = isSpeechRecognitionSupported();
 
   const cineIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cineFpsRef = useRef(cineFps);
@@ -208,6 +223,23 @@ function App() {
     }
   }, []);
 
+  // Apply modality preset automatically when series is selected
+  const applyModalityPreset = useCallback((modality: string) => {
+    const preset = MODALITY_PRESETS[modality];
+    if (!preset) return;
+    setWindowCenter(preset.wc);
+    setWindowWidth(preset.ww);
+    const viewport = getViewport();
+    if (!viewport) return;
+    viewport.setProperties({
+      voiRange: {
+        lower: preset.wc - preset.ww / 2,
+        upper: preset.wc + preset.ww / 2,
+      },
+    });
+    viewport.render();
+  }, [getViewport]);
+
   const handleFilesSelected = useCallback(async (files: File[]) => {
     const { seriesList: newSeriesList, skipped } = await loadAndGroupFiles(files);
 
@@ -226,6 +258,7 @@ function App() {
     setImageIds(newSeriesList[0].imageIds);
     setMetadata(null);
     setViewportError(null);
+    setSmartReadingScores([]);
     clearHistory();
 
     const totalFiles = newSeriesList.reduce((sum, s) => sum + s.imageCount, 0);
@@ -234,7 +267,14 @@ function App() {
     } else {
       setFilename(`${files[0].name} (+${totalFiles - 1})`);
     }
-  }, [addToast]);
+
+    // Auto-apply modality preset
+    const firstModality = newSeriesList[0].modality;
+    if (firstModality && MODALITY_PRESETS[firstModality]) {
+      // defer to after viewport is ready
+      setTimeout(() => applyModalityPreset(firstModality), 500);
+    }
+  }, [addToast, applyModalityPreset]);
 
   const handleSeriesSelect = useCallback((index: number) => {
     setActiveSeriesIndex(index);
@@ -245,7 +285,13 @@ function App() {
     setTotalSlices(series.imageCount);
     setMetadata(null);
     setViewportError(null);
-  }, [seriesList]);
+    setSmartReadingScores([]);
+
+    // Auto-apply modality preset
+    if (series.modality && MODALITY_PRESETS[series.modality]) {
+      setTimeout(() => applyModalityPreset(series.modality), 200);
+    }
+  }, [seriesList, applyModalityPreset]);
 
   const handleSliceChange = useCallback((currentIndex: number, total: number) => {
     setCurrentSlice(currentIndex);
@@ -273,19 +319,16 @@ function App() {
   }, [currentSlice, totalSlices, getViewport]);
 
   const handleReset = useCallback(() => {
-    // Clear all annotations
     try {
       annotation.state.removeAllAnnotations();
     } catch (e) {
       console.warn('Failed to remove annotations:', e);
     }
     clearHistory();
-    // Reset transforms
     setFlipH(false);
     setFlipV(false);
     setRotation(0);
     setInvertActive(false);
-    // Reset camera
     const viewport = getViewport();
     if (!viewport) return;
     viewport.resetCamera();
@@ -442,7 +485,6 @@ function App() {
       const next = Math.min(prev + 5, MAX_FPS);
       cineFpsRef.current = next;
       if (cineActiveRef.current) {
-        // Restart with new FPS
         if (cineIntervalRef.current) clearInterval(cineIntervalRef.current);
         const interval = Math.round(1000 / next);
         cineIntervalRef.current = setInterval(() => {
@@ -481,7 +523,6 @@ function App() {
   }, [getViewport]);
 
   const handleAutoWL = useCallback(() => {
-    // Placeholder: Wasm integration pending
     addToast('自動WL/WW: Wasm連携は後ほど実装されます', 'error');
   }, [addToast]);
 
@@ -555,6 +596,146 @@ function App() {
     stopCine();
     setLayout(newLayout);
   }, [stopCine]);
+
+  // Group 6: AI Scout toggle
+  const handleToggleAiScout = useCallback(() => {
+    setAiScoutEnabled((prev) => !prev);
+  }, []);
+
+  // Group 7: Smart Reading - compute all slice scores
+  const computeAllSliceScores = useCallback(async () => {
+    const activeSeries = seriesList[activeSeriesIndex];
+    if (!activeSeries || activeSeries.imageCount === 0) return;
+
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return;
+    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    if (!viewport) return;
+
+    const ids = activeSeries.imageIds;
+    setLoadingProgress(0);
+    const scores: number[] = new Array(ids.length).fill(0);
+
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        // Try to get pixel data from the cornerstone canvas
+        const canvas = viewport.getCanvas();
+        const w = canvas.width;
+        const h = canvas.height;
+        if (w > 0 && h > 0) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const gray = new Uint8Array(w * h);
+            for (let j = 0; j < w * h; j++) {
+              gray[j] = imageData.data[j * 4];
+            }
+            scores[i] = await computeSliceImportanceDownsampled(gray, w, h);
+          }
+        }
+      } catch (e) {
+        console.warn(`Failed to compute score for slice ${i}:`, e);
+        scores[i] = 0;
+      }
+      const progress = Math.round(((i + 1) / ids.length) * 100);
+      setLoadingProgress(progress);
+      setSmartReadingScores([...scores]);
+    }
+
+    setLoadingProgress(null);
+    addToast(`スマートリーディング完了: ${ids.length}スライス解析済み`, 'info');
+  }, [seriesList, activeSeriesIndex, addToast]);
+
+  // Compute keyframe slices: local peaks with minimum gap of 3
+  const keyframeSlices = useMemo(() => {
+    if (smartReadingScores.length < 3) return [];
+    const MIN_GAP = 3;
+    const peaks: number[] = [];
+    for (let i = 1; i < smartReadingScores.length - 1; i++) {
+      if (
+        smartReadingScores[i] > smartReadingScores[i - 1] &&
+        smartReadingScores[i] > smartReadingScores[i + 1]
+      ) {
+        // Check minimum gap from last peak
+        if (peaks.length === 0 || i - peaks[peaks.length - 1] >= MIN_GAP) {
+          peaks.push(i);
+        }
+      }
+    }
+    return peaks;
+  }, [smartReadingScores]);
+
+  const handleNextKeyframe = useCallback(() => {
+    if (keyframeSlices.length === 0) {
+      // No scores yet — trigger computation
+      computeAllSliceScores();
+      return;
+    }
+    // Find next keyframe after current slice
+    const next = keyframeSlices.find((idx) => idx > currentSlice);
+    const targetIdx = next !== undefined ? next : keyframeSlices[0];
+    handleSliceSelect(targetIdx);
+  }, [keyframeSlices, currentSlice, handleSliceSelect, computeAllSliceScores]);
+
+  // Group 8: Voice Commands
+  const handleToggleVoice = useCallback(() => {
+    if (voiceActive) {
+      stopVoiceRecognition();
+      setVoiceActive(false);
+      addToast('音声コマンド停止', 'info');
+    } else {
+      startVoiceRecognition((cmd) => {
+        switch (cmd) {
+          case 'next': handleNextSlice(); break;
+          case 'prev': handlePrevSlice(); break;
+          case 'first': handleSliceSelect(0); break;
+          case 'last': handleSliceSelect(totalSlices - 1); break;
+          case 'zoom': handleToolChange('zoom'); break;
+          case 'pan': handleToolChange('pan'); break;
+          case 'rotate': handleToolChange('rotate'); break;
+          case 'windowLevel': handleToolChange('windowLevel'); break;
+          case 'length': handleToolChange('length'); break;
+          case 'angle': handleToolChange('angle'); break;
+          case 'rectangleROI': handleToolChange('rectangleROI'); break;
+          case 'circleROI': handleToolChange('circleROI'); break;
+          case 'ellipticalROI': handleToolChange('ellipticalROI'); break;
+          case 'freehandROI': handleToolChange('freehandROI'); break;
+          case 'probe': handleToolChange('probe'); break;
+          case 'arrowAnnotate': handleToolChange('arrowAnnotate'); break;
+          case 'reset': handleReset(); break;
+          case 'fit': handleFitToWindow(); break;
+          case 'invert': handleInvert(); break;
+          case 'flipH': handleFlipH(); break;
+          case 'flipV': handleFlipV(); break;
+          case 'screenshot': handleScreenshot(); break;
+          case 'print': handlePrint(); break;
+          case 'cine': handleCineToggle(); break;
+          case 'autoWL': handleAutoWL(); break;
+          case 'rotateCW': handleRotateCW(); break;
+          case 'rotateCCW': handleRotateCCW(); break;
+          case 'nextKeyframe': handleNextKeyframe(); break;
+          case 'aiScout': handleToggleAiScout(); break;
+          default: break;
+        }
+      });
+      setVoiceActive(true);
+      addToast('音声コマンド開始 (日本語)', 'info');
+    }
+  }, [
+    voiceActive, addToast,
+    handleNextSlice, handlePrevSlice, handleSliceSelect, totalSlices,
+    handleToolChange, handleReset, handleFitToWindow, handleInvert,
+    handleFlipH, handleFlipV, handleScreenshot, handlePrint,
+    handleCineToggle, handleAutoWL, handleRotateCW, handleRotateCCW,
+    handleNextKeyframe, handleToggleAiScout,
+  ]);
+
+  // Cleanup voice on unmount
+  useEffect(() => {
+    return () => {
+      if (voiceActive) stopVoiceRecognition();
+    };
+  }, [voiceActive]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -644,6 +825,10 @@ function App() {
         cineActive={cineActive}
         cineFps={cineFps}
         layout={layout}
+        aiScoutEnabled={aiScoutEnabled}
+        voiceActive={voiceActive}
+        voiceSupported={voiceSupported}
+        loadingProgress={loadingProgress}
         onToolChange={handleToolChange}
         onPresetSelect={handlePresetSelect}
         onFitToWindow={handleFitToWindow}
@@ -664,6 +849,9 @@ function App() {
         onScreenshot={handleScreenshot}
         onPrint={handlePrint}
         onLayoutChange={handleLayoutChange}
+        onToggleAiScout={handleToggleAiScout}
+        onNextKeyframe={handleNextKeyframe}
+        onToggleVoice={handleToggleVoice}
       />
       <div style={bodyStyle}>
         {leftPanelOpen && (
@@ -674,31 +862,35 @@ function App() {
               activeSliceIndex={currentSlice}
               onSeriesSelect={handleSeriesSelect}
               onSliceSelect={handleSliceSelect}
+              importanceScores={smartReadingScores.length > 0 ? smartReadingScores : undefined}
             />
           </aside>
         )}
         <main style={centerPanelStyle}>
-          {ready && layout === '1x1' && (
-            <Viewport
-              imageIds={imageIds}
-              onVoiChange={handleVoiChange}
-              onImageRendered={handleImageRendered}
-              onImageLoadFailed={handleImageLoadFailed}
-              onSliceChange={handleSliceChange}
-              error={viewportError}
-              metadata={metadata}
-              windowCenter={windowCenter}
-              windowWidth={windowWidth}
-            />
-          )}
-          {ready && layout !== '1x1' && (
-            <ViewportLayout
-              layout={layout}
-              seriesList={seriesList}
-              onVoiChange={handleVoiChange}
-              onImageRendered={handleImageRendered}
-            />
-          )}
+          <ErrorBoundary>
+            {ready && layout === '1x1' && (
+              <Viewport
+                imageIds={imageIds}
+                onVoiChange={handleVoiChange}
+                onImageRendered={handleImageRendered}
+                onImageLoadFailed={handleImageLoadFailed}
+                onSliceChange={handleSliceChange}
+                error={viewportError}
+                metadata={metadata}
+                windowCenter={windowCenter}
+                windowWidth={windowWidth}
+                aiScoutEnabled={aiScoutEnabled}
+              />
+            )}
+            {ready && layout !== '1x1' && (
+              <ViewportLayout
+                layout={layout}
+                seriesList={seriesList}
+                onVoiChange={handleVoiChange}
+                onImageRendered={handleImageRendered}
+              />
+            )}
+          </ErrorBoundary>
           <DropZone
             hasImages={imageIds.length > 0}
             onFilesSelected={handleFilesSelected}

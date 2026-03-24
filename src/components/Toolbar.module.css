@@ -182,3 +182,38 @@
   white-space: nowrap;
   min-width: 44px;
 }
+
+/* Loading progress bar */
+.progressBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 20px;
+  min-width: 80px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.progressFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 10px;
+  transition: width 0.2s ease;
+  opacity: 0.5;
+}
+
+.progressLabel {
+  position: relative;
+  z-index: 1;
+  font-size: 10px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  padding: 0 8px;
+  white-space: nowrap;
+}

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { User, FileText, Layers, Image, ChevronRight, FileX } from 'lucide-react';
+import { useState, useMemo, memo } from 'react';
+import { User, FileText, Layers, Image, ChevronRight, FileX, Search } from 'lucide-react';
 import type { DicomMetadata } from '../types/dicom';
 import styles from './MetadataPanel.module.css';
 
@@ -40,15 +40,16 @@ interface RowProps {
   label: string;
   value: string | number | undefined | null;
   dimmed?: boolean;
+  highlight?: boolean;
 }
 
-function Row({ label, value, dimmed = false }: RowProps) {
+function Row({ label, value, dimmed = false, highlight = false }: RowProps) {
   const displayValue = value !== undefined && value !== null && value !== ''
     ? String(value)
     : '—';
 
   return (
-    <div className={styles.row}>
+    <div className={`${styles.row} ${highlight ? styles.rowHighlight : ''}`}>
       <span className={styles.rowLabel}>{label}</span>
       <span className={`${styles.rowValue} ${dimmed ? styles.dimmed : ''}`}>
         {displayValue}
@@ -69,7 +70,23 @@ function formatSex(sex: string): string {
   return sex || '—';
 }
 
-export function MetadataPanel({ metadata }: MetadataPanelProps) {
+export const MetadataPanel = memo(function MetadataPanel({ metadata }: MetadataPanelProps) {
+  const [searchText, setSearchText] = useState('');
+
+  const lowerSearch = useMemo(() => searchText.toLowerCase().trim(), [searchText]);
+
+  // Determine if a label/value pair matches the search
+  const matches = useMemo(() => {
+    if (!lowerSearch || !metadata) return () => false;
+    return (label: string, value: string | number | undefined | null): boolean => {
+      const v = value !== undefined && value !== null ? String(value) : '';
+      return (
+        label.toLowerCase().includes(lowerSearch) ||
+        v.toLowerCase().includes(lowerSearch)
+      );
+    };
+  }, [lowerSearch, metadata]);
+
   if (!metadata) {
     return (
       <div className={styles.panel}>
@@ -85,34 +102,47 @@ export function MetadataPanel({ metadata }: MetadataPanelProps) {
 
   return (
     <div className={styles.panel}>
+      {/* Search box */}
+      <div className={styles.searchBox}>
+        <span className={styles.searchIcon}><Search size={12} /></span>
+        <input
+          className={styles.searchInput}
+          type="text"
+          placeholder="タグを検索..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          aria-label="メタデータ検索"
+        />
+      </div>
+
       <Section icon={<User size={12} />} title="患者情報">
-        <Row label="氏名" value={patient.name} />
-        <Row label="患者ID" value={patient.id} />
-        <Row label="生年月日" value={formatDate(patient.birthDate)} />
-        <Row label="性別" value={formatSex(patient.sex)} />
+        <Row label="氏名" value={patient.name} highlight={matches('氏名', patient.name)} />
+        <Row label="患者ID" value={patient.id} highlight={matches('患者ID', patient.id)} />
+        <Row label="生年月日" value={formatDate(patient.birthDate)} highlight={matches('生年月日', patient.birthDate)} />
+        <Row label="性別" value={formatSex(patient.sex)} highlight={matches('性別', patient.sex)} />
       </Section>
 
       <Section icon={<FileText size={12} />} title="検査情報">
-        <Row label="検査日" value={formatDate(study.date)} />
-        <Row label="検査内容" value={study.description} />
-        <Row label="受付番号" value={study.accessionNumber} />
+        <Row label="検査日" value={formatDate(study.date)} highlight={matches('検査日', study.date)} />
+        <Row label="検査内容" value={study.description} highlight={matches('検査内容', study.description)} />
+        <Row label="受付番号" value={study.accessionNumber} highlight={matches('受付番号', study.accessionNumber)} />
       </Section>
 
       <Section icon={<Layers size={12} />} title="シリーズ情報">
-        <Row label="モダリティ" value={series.modality} />
-        <Row label="説明" value={series.description} />
-        <Row label="シリーズ番号" value={series.number} />
+        <Row label="モダリティ" value={series.modality} highlight={matches('モダリティ', series.modality)} />
+        <Row label="説明" value={series.description} highlight={matches('説明', series.description)} />
+        <Row label="シリーズ番号" value={series.number} highlight={matches('シリーズ番号', series.number)} />
       </Section>
 
       <Section icon={<Image size={12} />} title="画像情報">
-        <Row label="行×列" value={`${image.rows} × ${image.columns}`} />
-        <Row label="ビット深度" value={`${image.bitsAllocated}bit (${image.bitsStored}stored)`} />
-        <Row label="WC" value={image.windowCenter} />
-        <Row label="WW" value={image.windowWidth} />
-        <Row label="測光解釈" value={image.photometricInterpretation} />
-        <Row label="転送構文" value={image.transferSyntax} dimmed />
-        <Row label="SOP UID" value={image.sopInstanceUid} dimmed />
+        <Row label="行×列" value={`${image.rows} × ${image.columns}`} highlight={matches('行×列', `${image.rows} × ${image.columns}`)} />
+        <Row label="ビット深度" value={`${image.bitsAllocated}bit (${image.bitsStored}stored)`} highlight={matches('ビット深度', '')} />
+        <Row label="WC" value={image.windowCenter} highlight={matches('WC', image.windowCenter)} />
+        <Row label="WW" value={image.windowWidth} highlight={matches('WW', image.windowWidth)} />
+        <Row label="測光解釈" value={image.photometricInterpretation} highlight={matches('測光解釈', image.photometricInterpretation)} />
+        <Row label="転送構文" value={image.transferSyntax} dimmed highlight={matches('転送構文', image.transferSyntax)} />
+        <Row label="SOP UID" value={image.sopInstanceUid} dimmed highlight={matches('SOP UID', image.sopInstanceUid)} />
       </Section>
     </div>
   );
-}
+});

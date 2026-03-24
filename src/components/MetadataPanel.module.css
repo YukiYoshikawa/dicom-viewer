@@ -107,3 +107,40 @@
 .rowValue.dimmed {
   color: var(--text-secondary);
 }
+
+/* Search box */
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.searchIcon {
+  color: var(--text-disabled);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.searchInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  caret-color: var(--accent);
+}
+
+.searchInput::placeholder {
+  color: var(--text-disabled);
+}
+
+/* Highlighted row */
+.rowHighlight {
+  background: rgba(74, 158, 255, 0.12);
+  border-radius: 3px;
+}

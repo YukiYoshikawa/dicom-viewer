@@ -3,6 +3,7 @@ import { RenderingEngine, Enums } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
 import { AlertCircle } from 'lucide-react';
 import { createToolGroup } from '../core/toolSetup';
+import { computeChangeMap } from '../core/wasmBridge';
 import type { DicomMetadata } from '../types/dicom';
 import styles from './Viewport.module.css';
 
@@ -19,11 +20,30 @@ interface ViewportProps {
   metadata?: DicomMetadata | null;
   windowCenter?: number;
   windowWidth?: number;
+  aiScoutEnabled?: boolean;
 }
 
 function formatDate(raw: string): string {
   if (!raw || raw.length !== 8) return raw || '';
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}
+
+// Map a 0-255 change value to a cyan-yellow-red color gradient
+function changeValueToColor(v: number): [number, number, number] {
+  // 0 = transparent/black, 85 = cyan, 170 = yellow, 255 = red
+  if (v < 85) {
+    // black → cyan
+    const t = v / 85;
+    return [0, Math.round(255 * t), Math.round(255 * t)];
+  } else if (v < 170) {
+    // cyan → yellow
+    const t = (v - 85) / 85;
+    return [Math.round(255 * t), 255, Math.round(255 * (1 - t))];
+  } else {
+    // yellow → red
+    const t = (v - 170) / 85;
+    return [255, Math.round(255 * (1 - t)), 0];
+  }
 }
 
 export function Viewport({
@@ -36,10 +56,13 @@ export function Viewport({
   metadata,
   windowCenter,
   windowWidth,
+  aiScoutEnabled = false,
 }: ViewportProps) {
   const divRef = useRef<HTMLDivElement>(null);
+  const heatmapCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<RenderingEngine | null>(null);
   const currentSliceRef = useRef<number>(0);
+  const prevPixelDataRef = useRef<Uint8Array | null>(null);
 
   // Store latest callbacks in refs so the init useEffect doesn't re-run
   const onImageRenderedRef = useRef(onImageRendered);
@@ -50,6 +73,51 @@ export function Viewport({
   onVoiChangeRef.current = onVoiChange;
   const onSliceChangeRef = useRef(onSliceChange);
   onSliceChangeRef.current = onSliceChange;
+  const aiScoutEnabledRef = useRef(aiScoutEnabled);
+  aiScoutEnabledRef.current = aiScoutEnabled;
+
+  const renderHeatmap = useCallback(async (
+    currentData: Uint8Array,
+    width: number,
+    height: number
+  ) => {
+    const canvas = heatmapCanvasRef.current;
+    if (!canvas) return;
+
+    const prev = prevPixelDataRef.current;
+    if (!prev || prev.length !== currentData.length) {
+      prevPixelDataRef.current = currentData.slice();
+      // Clear heatmap
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    try {
+      const changeMap = await computeChangeMap(currentData, prev, width, height);
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const imgData = ctx.createImageData(width, height);
+      for (let i = 0; i < changeMap.length; i++) {
+        const v = changeMap[i];
+        const [r, g, b] = changeValueToColor(v);
+        const alpha = Math.round(v * 0.75); // semi-transparent
+        imgData.data[i * 4 + 0] = r;
+        imgData.data[i * 4 + 1] = g;
+        imgData.data[i * 4 + 2] = b;
+        imgData.data[i * 4 + 3] = alpha;
+      }
+      ctx.putImageData(imgData, 0, 0);
+    } catch (e) {
+      console.warn('AI Scout heatmap error:', e);
+    }
+
+    prevPixelDataRef.current = currentData.slice();
+  }, []);
 
   // Create the rendering engine and enable the element on mount
   useEffect(() => {
@@ -96,6 +164,36 @@ export function Viewport({
         // VOI not yet available
       }
 
+      // AI Scout heatmap
+      if (aiScoutEnabledRef.current) {
+        try {
+          const canvas = viewport.getCanvas();
+          const w = canvas.width;
+          const h = canvas.height;
+          if (w > 0 && h > 0) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const imageData = ctx.getImageData(0, 0, w, h);
+              // Extract grayscale as u8
+              const gray = new Uint8Array(w * h);
+              for (let i = 0; i < w * h; i++) {
+                gray[i] = imageData.data[i * 4]; // R channel (grayscale)
+              }
+              renderHeatmap(gray, w, h);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to capture pixel data for AI Scout:', e);
+        }
+      } else {
+        // Clear heatmap when disabled
+        const heatCanvas = heatmapCanvasRef.current;
+        if (heatCanvas) {
+          const ctx = heatCanvas.getContext('2d');
+          if (ctx) ctx.clearRect(0, 0, heatCanvas.width, heatCanvas.height);
+        }
+      }
+
       // Notify slice change if index changed
       if (idx !== currentSliceRef.current || total > 0) {
         currentSliceRef.current = idx;
@@ -112,7 +210,19 @@ export function Viewport({
       renderingEngine.destroy();
       engineRef.current = null;
     };
-  }, []);
+  }, [renderHeatmap]);
+
+  // Clear prev pixel data when AI scout is toggled off
+  useEffect(() => {
+    if (!aiScoutEnabled) {
+      prevPixelDataRef.current = null;
+      const canvas = heatmapCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }, [aiScoutEnabled]);
 
   // Load images whenever imageIds change
   const loadImages = useCallback(async () => {
@@ -127,6 +237,7 @@ export function Viewport({
     try {
       await viewport.setStack(imageIds, 0);
       currentSliceRef.current = 0;
+      prevPixelDataRef.current = null;
       viewport.render();
 
       // Notify slice count immediately after stack set
@@ -155,6 +266,26 @@ export function Viewport({
         className={styles.viewport}
         tabIndex={-1}
       />
+
+      {/* AI Scout heatmap canvas overlay */}
+      <canvas
+        ref={heatmapCanvasRef}
+        className={styles.heatmapOverlay}
+        aria-hidden="true"
+      />
+
+      {/* AI Scout legend */}
+      {aiScoutEnabled && (
+        <div className={styles.aiScoutLegend}>
+          <span className={styles.legendTitle}>変化マップ</span>
+          <div className={styles.legendGradient} />
+          <div className={styles.legendLabels}>
+            <span>低</span>
+            <span>中</span>
+            <span>高</span>
+          </div>
+        </div>
+      )}
 
       {/* Four-corner overlays */}
       {metadata && (

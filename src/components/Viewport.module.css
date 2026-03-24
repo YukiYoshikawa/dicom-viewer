@@ -76,3 +76,52 @@
   align-items: flex-end;
   text-align: right;
 }
+
+/* AI Scout heatmap canvas overlay */
+.heatmapOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  image-rendering: pixelated;
+  z-index: 3;
+  opacity: 0.8;
+}
+
+/* AI Scout legend */
+.aiScoutLegend {
+  position: absolute;
+  bottom: 48px;
+  right: 8px;
+  background: rgba(10, 10, 15, 0.75);
+  border-radius: 6px;
+  padding: 6px 10px;
+  pointer-events: none;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 80px;
+}
+
+.legendTitle {
+  font-size: 10px;
+  color: rgba(224, 224, 232, 0.85);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+.legendGradient {
+  height: 8px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #00ffff, #ffff00, #ff0000);
+}
+
+.legendLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: rgba(224, 224, 232, 0.6);
+}
