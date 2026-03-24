@@ -116,10 +116,10 @@ function App() {
   const [flipV, setFlipV] = useState(false);
   const [rotation, setRotation] = useState(0);
 
-  // Group 6: AI Scout
+  // スライス差分マップ
   const [aiScoutEnabled, setAiScoutEnabled] = useState(false);
 
-  // Group 7: Smart Reading
+  // スライス重要度
   const [smartReadingScores, setSmartReadingScores] = useState<number[]>([]);
   const [loadingProgress, setLoadingProgress] = useState<number | null>(null);
 
@@ -643,7 +643,7 @@ function App() {
     }
 
     setLoadingProgress(null);
-    addToast(`スマートリーディング完了: ${ids.length}スライス解析済み`, 'info');
+    addToast(`スライス重要度解析完了: ${ids.length}スライス`, 'info');
   }, [seriesList, activeSeriesIndex, addToast]);
 
   // Compute keyframe slices: local peaks with minimum gap of 3

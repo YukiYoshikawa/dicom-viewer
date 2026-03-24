@@ -98,8 +98,8 @@ const COMMAND_MAP: { patterns: RegExp; command: string }[] = [
   { patterns: /オート|auto|おーと|自動/, command: 'autoWL' },
   { patterns: /時計回り|clockwise|右回転/, command: 'rotateCW' },
   { patterns: /反時計|counterclockwise|左回転/, command: 'rotateCCW' },
-  { patterns: /キーフレーム|keyframe|きーふれーむ/, command: 'nextKeyframe' },
-  { patterns: /AIスカウト|ai scout|えーあいすかうと|変化マップ/, command: 'aiScout' },
+  { patterns: /キーフレーム|keyframe|きーふれーむ|注目スライス|重要度/, command: 'nextKeyframe' },
+  { patterns: /差分マップ|差分|diff|ディフ|変化マップ/, command: 'aiScout' },
   { patterns: /音声|voice|おんせい|マイク/, command: 'voice' },
 ];
 

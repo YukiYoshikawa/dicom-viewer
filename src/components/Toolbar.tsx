@@ -282,12 +282,12 @@ export function Toolbar({
 
       <div className={styles.separator} />
 
-      {/* AI Scout + Smart Reading (next keyframe) + Voice */}
+      {/* スライス差分マップ + スライス重要度 + Voice */}
       <div className={styles.group}>
         <button
           className={`${styles.toolButton} ${aiScoutEnabled ? styles.active : ''}`}
           onClick={onToggleAiScout}
-          title="AIスカウト 変化マップ"
+          title="スライス差分マップ"
           aria-pressed={aiScoutEnabled}
         >
           <Radar size={16} />
@@ -295,7 +295,7 @@ export function Toolbar({
         <button
           className={styles.toolButton}
           onClick={onNextKeyframe}
-          title="次のキーフレーム (スマートリーディング)"
+          title="次の注目スライス (スライス重要度)"
         >
           <Zap size={16} />
         </button>
