@@ -1,0 +1,4407 @@
+diff --git a/docs/design/architecture.html b/docs/design/architecture.html
+new file mode 100644
+index 0000000..1f58063
+--- /dev/null
++++ b/docs/design/architecture.html
+@@ -0,0 +1,877 @@
++<!DOCTYPE html>
++<html lang="ja">
++<head>
++<meta charset="UTF-8">
++<meta name="viewport" content="width=device-width, initial-scale=1.0">
++<title>TERASU DICOM Viewer — 設計書</title>
++<style>
++  :root {
++    --bg: #0a0a0f;
++    --bg-card: #12121a;
++    --bg-code: #1a1a2e;
++    --text: #e0e0e8;
++    --text-dim: #8888a0;
++    --accent: #4a9eff;
++    --accent2: #00ff88;
++    --accent3: #ff6b6b;
++    --accent4: #ffd93d;
++    --border: #2a2a3e;
++    --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
++    --mono: 'JetBrains Mono', 'Fira Code', monospace;
++  }
++  * { margin: 0; padding: 0; box-sizing: border-box; }
++  body {
++    font-family: var(--font);
++    background: var(--bg);
++    color: var(--text);
++    line-height: 1.7;
++    padding: 40px 20px;
++  }
++  .container { max-width: 1100px; margin: 0 auto; }
++
++  h1 {
++    font-size: 2.2rem;
++    font-weight: 800;
++    margin-bottom: 8px;
++    background: linear-gradient(135deg, var(--accent), var(--accent2));
++    -webkit-background-clip: text;
++    -webkit-text-fill-color: transparent;
++  }
++  .subtitle {
++    font-size: 1rem;
++    color: var(--text-dim);
++    margin-bottom: 40px;
++    border-bottom: 1px solid var(--border);
++    padding-bottom: 20px;
++  }
++  h2 {
++    font-size: 1.5rem;
++    font-weight: 700;
++    margin: 48px 0 16px;
++    color: var(--accent);
++    display: flex;
++    align-items: center;
++    gap: 10px;
++  }
++  h2 .badge {
++    font-size: 0.65rem;
++    padding: 2px 8px;
++    border-radius: 4px;
++    font-weight: 600;
++    text-transform: uppercase;
++    letter-spacing: 0.05em;
++  }
++  .badge-wasm { background: rgba(0,255,136,0.15); color: var(--accent2); border: 1px solid rgba(0,255,136,0.3); }
++  .badge-core { background: rgba(74,158,255,0.15); color: var(--accent); border: 1px solid rgba(74,158,255,0.3); }
++  .badge-innovative { background: rgba(255,107,107,0.15); color: var(--accent3); border: 1px solid rgba(255,107,107,0.3); }
++
++  h3 {
++    font-size: 1.1rem;
++    font-weight: 600;
++    margin: 24px 0 8px;
++    color: var(--text);
++  }
++  p { margin: 8px 0; color: var(--text-dim); }
++
++  .card {
++    background: var(--bg-card);
++    border: 1px solid var(--border);
++    border-radius: 12px;
++    padding: 24px;
++    margin: 16px 0;
++  }
++  .card-highlight {
++    border-color: var(--accent2);
++    box-shadow: 0 0 20px rgba(0,255,136,0.05);
++  }
++
++  table {
++    width: 100%;
++    border-collapse: collapse;
++    margin: 12px 0;
++    font-size: 0.9rem;
++  }
++  th {
++    text-align: left;
++    padding: 10px 12px;
++    background: var(--bg-code);
++    color: var(--accent);
++    font-weight: 600;
++    font-size: 0.8rem;
++    text-transform: uppercase;
++    letter-spacing: 0.05em;
++    border-bottom: 2px solid var(--border);
++  }
++  td {
++    padding: 8px 12px;
++    border-bottom: 1px solid var(--border);
++    color: var(--text-dim);
++  }
++  td:first-child { color: var(--text); font-weight: 500; }
++  tr:hover td { background: rgba(74,158,255,0.03); }
++
++  code {
++    font-family: var(--mono);
++    background: var(--bg-code);
++    padding: 2px 6px;
++    border-radius: 4px;
++    font-size: 0.85em;
++    color: var(--accent2);
++  }
++  pre {
++    background: var(--bg-code);
++    border: 1px solid var(--border);
++    border-radius: 8px;
++    padding: 16px;
++    overflow-x: auto;
++    font-family: var(--mono);
++    font-size: 0.85rem;
++    line-height: 1.6;
++    margin: 12px 0;
++    color: var(--text-dim);
++  }
++
++  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
++  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
++  @media (max-width: 768px) {
++    .grid2, .grid3 { grid-template-columns: 1fr; }
++  }
++
++  .metric {
++    text-align: center;
++    padding: 20px;
++  }
++  .metric-value {
++    font-size: 2rem;
++    font-weight: 800;
++    color: var(--accent2);
++  }
++  .metric-label {
++    font-size: 0.8rem;
++    color: var(--text-dim);
++    margin-top: 4px;
++  }
++
++  .flow {
++    display: flex;
++    align-items: center;
++    gap: 8px;
++    flex-wrap: wrap;
++    margin: 12px 0;
++  }
++  .flow-step {
++    background: var(--bg-code);
++    border: 1px solid var(--border);
++    border-radius: 6px;
++    padding: 6px 12px;
++    font-size: 0.85rem;
++    color: var(--text);
++  }
++  .flow-arrow { color: var(--accent); font-weight: bold; }
++  .flow-wasm {
++    border-color: var(--accent2);
++    background: rgba(0,255,136,0.05);
++    color: var(--accent2);
++  }
++
++  .shortcut-grid {
++    display: grid;
++    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
++    gap: 6px;
++  }
++  .shortcut {
++    display: flex;
++    align-items: center;
++    gap: 8px;
++    padding: 4px 8px;
++    font-size: 0.85rem;
++  }
++  .shortcut kbd {
++    background: var(--bg-code);
++    border: 1px solid var(--border);
++    border-radius: 4px;
++    padding: 2px 8px;
++    font-family: var(--mono);
++    font-size: 0.8rem;
++    color: var(--accent);
++    min-width: 32px;
++    text-align: center;
++  }
++
++  .toc {
++    background: var(--bg-card);
++    border: 1px solid var(--border);
++    border-radius: 12px;
++    padding: 20px 24px;
++    margin: 24px 0;
++  }
++  .toc-title { font-weight: 700; margin-bottom: 12px; color: var(--text); }
++  .toc ol { padding-left: 20px; }
++  .toc li { margin: 4px 0; }
++  .toc a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
++  .toc a:hover { text-decoration: underline; }
++
++  .wasm-callout {
++    background: rgba(0,255,136,0.05);
++    border-left: 3px solid var(--accent2);
++    padding: 12px 16px;
++    margin: 12px 0;
++    border-radius: 0 8px 8px 0;
++  }
++  .wasm-callout strong { color: var(--accent2); }
++
++  /* Architecture diagram */
++  .arch-diagram {
++    display: flex;
++    flex-direction: column;
++    gap: 12px;
++    padding: 24px;
++  }
++  .arch-row {
++    display: flex;
++    gap: 12px;
++    align-items: stretch;
++  }
++  .arch-box {
++    border-radius: 10px;
++    padding: 16px;
++    flex: 1;
++    min-width: 0;
++  }
++  .arch-box-title {
++    font-weight: 700;
++    font-size: 0.9rem;
++    margin-bottom: 8px;
++    display: flex;
++    align-items: center;
++    gap: 6px;
++  }
++  .arch-box ul {
++    padding-left: 16px;
++    font-size: 0.8rem;
++    line-height: 1.8;
++    color: var(--text-dim);
++  }
++  .arch-react {
++    background: rgba(74,158,255,0.08);
++    border: 1px solid rgba(74,158,255,0.3);
++  }
++  .arch-react .arch-box-title { color: var(--accent); }
++  .arch-cs3d {
++    background: rgba(255,217,61,0.08);
++    border: 1px solid rgba(255,217,61,0.3);
++  }
++  .arch-cs3d .arch-box-title { color: var(--accent4); }
++  .arch-wasm {
++    background: rgba(0,255,136,0.08);
++    border: 1px solid rgba(0,255,136,0.3);
++  }
++  .arch-wasm .arch-box-title { color: var(--accent2); }
++  .arch-io {
++    background: rgba(255,107,107,0.08);
++    border: 1px solid rgba(255,107,107,0.3);
++  }
++  .arch-io .arch-box-title { color: var(--accent3); }
++  .arch-connector {
++    display: flex;
++    justify-content: center;
++    align-items: center;
++    font-size: 0.75rem;
++    color: var(--text-dim);
++    gap: 12px;
++    padding: 0 20px;
++  }
++  .arch-connector-line {
++    flex: 1;
++    height: 1px;
++    background: var(--border);
++  }
++  .arch-connector-label {
++    white-space: nowrap;
++    background: var(--bg-card);
++    padding: 2px 10px;
++    border-radius: 4px;
++    border: 1px solid var(--border);
++  }
++  .arch-wrapper {
++    border: 1px solid var(--border);
++    border-radius: 14px;
++    padding: 4px;
++    background: var(--bg-card);
++    position: relative;
++  }
++  .arch-wrapper-label {
++    position: absolute;
++    top: -10px;
++    left: 20px;
++    background: var(--bg-card);
++    padding: 0 8px;
++    font-size: 0.75rem;
++    font-weight: 600;
++    color: var(--text-dim);
++    text-transform: uppercase;
++    letter-spacing: 0.05em;
++  }
++</style>
++</head>
++<body>
++<div class="container">
++
++<h1>TERASU DICOM Viewer</h1>
++<p class="subtitle">
++  WebAssembly + Cornerstone3D ハイブリッドアーキテクチャによる次世代ブラウザベース DICOM Viewer<br>
++  設計書 v4.0 — 2026-03-24
++</p>
++
++<!-- TOC -->
++<div class="toc">
++  <div class="toc-title">目次</div>
++  <ol>
++    <li><a href="#overview">システム概要</a></li>
++    <li><a href="#architecture">アーキテクチャ</a></li>
++    <li><a href="#wasm">WebAssembly (Wasm) の役割と性能</a></li>
++    <li><a href="#features">機能一覧</a></li>
++    <li><a href="#innovative">革新的機能</a></li>
++    <li><a href="#performance">性能最適化</a></li>
++    <li><a href="#shortcuts">キーボードショートカット</a></li>
++    <li><a href="#tech">技術スタック</a></li>
++    <li><a href="#files">ファイル構成</a></li>
++  </ol>
++</div>
++
++<!-- 1. Overview -->
++<h2 id="overview">1. システム概要</h2>
++<div class="card">
++  <p>TERASU DICOM Viewer は、<strong>完全ブラウザ内動作</strong>の医用画像ビューアです。サーバーへの画像送信は一切不要で、ローカルファイルをドラッグ＆ドロップするだけで即座に読影を開始できます。</p>
++  <p>従来のサーバー依存型ビューアと異なり、<strong>Rust → WebAssembly</strong> によるCPU集約処理の高速化と、<strong>Cornerstone3D</strong> のGPUレンダリングを組み合わせたハイブリッドアーキテクチャを採用。プライバシー保護・低レイテンシ・ゼロインストールを同時に実現しています。</p>
++</div>
++
++<div class="grid3">
++  <div class="card metric">
++    <div class="metric-value">&lt;5ms</div>
++    <div class="metric-label">AI Scout 異常検出<br>(512×512, Wasm)</div>
++  </div>
++  <div class="card metric">
++    <div class="metric-value">~1ms</div>
++    <div class="metric-label">スライス重要度計算<br>(Smart Reading, Wasm)</div>
++  </div>
++  <div class="card metric">
++    <div class="metric-value">0</div>
++    <div class="metric-label">外部サーバー依存<br>(完全ローカル)</div>
++  </div>
++</div>
++
++<!-- 2. Architecture -->
++<h2 id="architecture">2. アーキテクチャ</h2>
++<div class="arch-wrapper">
++  <span class="arch-wrapper-label">Browser</span>
++  <div class="arch-diagram">
++    <!-- Main 3 columns -->
++    <div class="arch-row">
++      <div class="arch-box arch-react">
++        <div class="arch-box-title">
++          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
++          React UI
++        </div>
++        <ul>
++          <li>Toolbar (全ツールボタン)</li>
++          <li>Viewport (2D表示)</li>
++          <li>ViewportGrid (MPR/3D)</li>
++          <li>ViewportLayout (1×2, 2×2)</li>
++          <li>SeriesPanel (仮想スクロール)</li>
++          <li>MetadataPanel (検索付き)</li>
++          <li>MeasurementPanel (計測テーブル)</li>
++          <li>HistogramPanel</li>
++        </ul>
++      </div>
++      <div class="arch-box arch-cs3d">
++        <div class="arch-box-title">
++          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5"/><path d="M12 12v9"/><path d="M12 12L4 7.5"/></svg>
++          Cornerstone3D v4.20
++        </div>
++        <ul>
++          <li>StackViewport (2Dスタック)</li>
++          <li>VolumeViewport (3D VR)</li>
++          <li>ORTHOGRAPHIC (MPR)</li>
++          <li>WebGL / WebGPU レンダリング</li>
++          <li>WL/WW, Zoom, Pan, Rotate</li>
++          <li>ROI, Length, Angle ツール</li>
++          <li>StackScroll, Crosshairs</li>
++          <li>Streaming Volume Loader</li>
++        </ul>
++      </div>
++      <div class="arch-box arch-wasm">
++        <div class="arch-box-title">
++          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
++          Rust / WebAssembly
++        </div>
++        <ul>
++          <li><strong>ai_scout.rs</strong> — AI Scout 異常検出</li>
++          <li><strong>ai_scout.rs</strong> — Smart Reading スコア</li>
++          <li><strong>filters.rs</strong> — Sobel, Laplacian, Sharpen, Denoise</li>
++          <li><strong>histogram.rs</strong> — Auto WL/WW</li>
++          <li><strong>histogram.rs</strong> — ヒストグラム計算</li>
++          <li><strong>histogram.rs</strong> — DICOM匿名化</li>
++          <li><strong>histogram.rs</strong> — 差分マップ</li>
++          <li><strong>pixel.rs</strong> — 16bit→8bit変換</li>
++        </ul>
++      </div>
++    </div>
++
++    <!-- Event Bus connector -->
++    <div class="arch-connector">
++      <div class="arch-connector-line"></div>
++      <div class="arch-connector-label">Event Bus (IMAGE_RENDERED, ANNOTATION_*, IMAGE_LOADED)</div>
++      <div class="arch-connector-line"></div>
++    </div>
++
++    <!-- Data I/O layer -->
++    <div class="arch-row">
++      <div class="arch-box arch-io" style="flex: 1;">
++        <div class="arch-box-title">
++          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
++          データ入力層
++        </div>
++        <div class="flow" style="margin: 4px 0;">
++          <span class="flow-step">File API (D&D / File Picker / Folder)</span>
++          <span class="flow-arrow">→</span>
++          <span class="flow-step">dicom-parser</span>
++          <span class="flow-arrow">→</span>
++          <span class="flow-step">Metadata Provider</span>
++          <span class="flow-arrow">→</span>
++          <span class="flow-step">Image Loader</span>
++          <span class="flow-arrow">→</span>
++          <span class="flow-step">Series Manager (並列バッチ)</span>
++        </div>
++      </div>
++    </div>
++  </div>
++</div>
++
++<h3>処理フロー</h3>
++<div class="flow">
++  <span class="flow-step">DICOM ファイル</span>
++  <span class="flow-arrow">→</span>
++  <span class="flow-step">dicom-parser</span>
++  <span class="flow-arrow">→</span>
++  <span class="flow-step">Metadata Provider</span>
++  <span class="flow-arrow">→</span>
++  <span class="flow-step">Cornerstone3D GPU Render</span>
++  <span class="flow-arrow">→</span>
++  <span class="flow-step flow-wasm">Wasm フィルタ / AI解析</span>
++  <span class="flow-arrow">→</span>
++  <span class="flow-step">Canvas Overlay</span>
++</div>
++
++<!-- 3. Wasm -->
++<h2 id="wasm">3. WebAssembly (Wasm) の役割と性能 <span class="badge badge-wasm">Rust / Wasm</span></h2>
++
++<div class="card card-highlight">
++  <p>WebAssembly は本ビューアの<strong>差別化の中核技術</strong>です。JavaScript では実用的な速度で実現できないCPU集約処理を、Rust で実装し Wasm にコンパイルすることで、ネイティブに近い速度をブラウザ内で達成しています。</p>
++</div>
++
++<h3>3.1 Wasm が担う処理領域</h3>
++<table>
++  <thead>
++    <tr><th>機能</th><th>Rust モジュール</th><th>処理内容</th><th>性能</th><th>JS実装との比較</th></tr>
++  </thead>
++  <tbody>
++    <tr>
++      <td>AI Scout 異常検出</td>
++      <td><code>ai_scout.rs</code></td>
++      <td>16×16ブロック単位の統計的テクスチャ解析（mean, variance, gradient）→ 全体分布からのマハラノビス距離でスコア化</td>
++      <td><strong>~3-5ms</strong> (512×512)</td>
++      <td>JSでは ~50-80ms</td>
++    </tr>
++    <tr>
++      <td>Smart Reading スコアリング</td>
++      <td><code>ai_scout.rs</code></td>
++      <td>エントロピー + エッジ密度 + 前後スライス差分による重要度計算</td>
++      <td><strong>~1-2ms</strong> / slice</td>
++      <td>JSでは ~15-20ms</td>
++    </tr>
++    <tr>
++      <td>画像フィルタ</td>
++      <td><code>filters.rs</code></td>
++      <td>Sobel, Laplacian, Sharpen, Denoise (Median), Invert, Histogram Equalization</td>
++      <td><strong>~8ms</strong> (812K px Sobel)</td>
++      <td>JSでは ~120ms</td>
++    </tr>
++    <tr>
++      <td>Auto WL/WW</td>
++      <td><code>histogram.rs</code></td>
++      <td>パーセンタイル分析（1st-99th）による最適 Window Center / Width 自動推定</td>
++      <td><strong>&lt;1ms</strong></td>
++      <td>JSでは ~5ms</td>
++    </tr>
++    <tr>
++      <td>ヒストグラム計算</td>
++      <td><code>histogram.rs</code></td>
++      <td>256ビンヒストグラム（8bit）/ 16bit対応</td>
++      <td><strong>&lt;1ms</strong></td>
++      <td>JSでは ~3ms</td>
++    </tr>
++    <tr>
++      <td>DICOM 匿名化</td>
++      <td><code>histogram.rs</code></td>
++      <td>焼き込みテキスト検出（上下マージンの輝度密度解析）→ ブランキング</td>
++      <td><strong>~2ms</strong></td>
++      <td>JSでは ~10ms</td>
++    </tr>
++    <tr>
++      <td>差分マップ</td>
++      <td><code>histogram.rs</code></td>
++      <td>2画像の絶対差分 → 最大差分でスケーリング</td>
++      <td><strong>~1ms</strong></td>
++      <td>JSでは ~8ms</td>
++    </tr>
++    <tr>
++      <td>ピクセル変換</td>
++      <td><code>pixel.rs</code></td>
++      <td>16bit → 8bit WL/WW変換</td>
++      <td><strong>&lt;1ms</strong></td>
++      <td>JSでは ~4ms</td>
++    </tr>
++  </tbody>
++</table>
++
++<h3>3.2 なぜ Wasm か（設計判断）</h3>
++<div class="card">
++  <table>
++    <thead><tr><th>判断基準</th><th>Wasm を使う</th><th>JS / Cornerstone3D に任せる</th></tr></thead>
++    <tbody>
++      <tr><td>CPU-bound ピクセル操作</td><td>フィルタ、ヒストグラム、統計解析</td><td>—</td></tr>
++      <tr><td>GPU レンダリング</td><td>—</td><td>WebGL/WebGPU による画像描画、ボリュームレンダリング</td></tr>
++      <tr><td>DICOM パース</td><td>—</td><td>dicom-parser（既に十分高速）</td></tr>
++      <tr><td>UI イベント処理</td><td>—</td><td>React + Cornerstone Tools</td></tr>
++      <tr><td>リアルタイム AI 解析</td><td>異常検出、重要度計算</td><td>—</td></tr>
++    </tbody>
++  </table>
++  <div class="wasm-callout">
++    <strong>設計原則:</strong> Wasm は「意味のある場所にだけ使う」。Cornerstone3D が GPU/JS で十分高速な処理はそのまま活用し、CPU-bound なピクセル演算・統計解析に限定して Wasm を適用。
++  </div>
++</div>
++
++<h3>3.3 Wasm 最適化テクニック</h3>
++<div class="card">
++  <ul style="padding-left: 20px; color: var(--text-dim);">
++    <li><strong>整数演算優先:</strong> float を排除し、i32/u8 整数演算で処理（filters.rs）</li>
++    <li><strong>ソーティングネットワーク:</strong> Median フィルタで分岐予測ミスを最小化</li>
++    <li><strong>サンプリング:</strong> 大画像（>100K px）では every-N-th ピクセルサンプリングで O(1) に近い計算</li>
++    <li><strong>ゼロコピー入力:</strong> u8 版フィルタで JS→Wasm 間のデータコピーを最小化</li>
++    <li><strong>ブロック単位処理:</strong> AI Scout は 16×16 ブロック → 32×32 ヒートマップ（1024倍の解像度削減）</li>
++  </ul>
++</div>
++
++<!-- 4. Features -->
++<h2 id="features">4. 機能一覧</h2>
++
++<h3>4.1 画像表示</h3>
++<table>
++  <thead><tr><th>機能</th><th>説明</th><th>技術</th></tr></thead>
++  <tbody>
++    <tr><td>2D Stack Viewport</td><td>DICOMスライスの表示・スクロール</td><td>Cornerstone3D StackViewport</td></tr>
++    <tr><td>MPR (多断面再構成)</td><td>Axial / Sagittal / Coronal 3パネル表示</td><td>Cornerstone3D ORTHOGRAPHIC</td></tr>
++    <tr><td>3D Volume Rendering</td><td>ボリュームレンダリング + VRプリセット</td><td>Cornerstone3D VOLUME_3D</td></tr>
++    <tr><td>レイアウト管理</td><td>1×1 / 1×2 / 2×2 グリッド切替</td><td>React ViewportLayout</td></tr>
++    <tr><td>Viewport 情報オーバーレイ</td><td>患者名・検査情報・WC/WW を四隅に表示</td><td>CSS Overlay</td></tr>
++    <tr><td>Cine 再生</td><td>自動スライス送り + 速度調整 (1-60fps)</td><td>setInterval + 動的FPS</td></tr>
++  </tbody>
++</table>
++
++<h3>4.2 画像操作</h3>
++<table>
++  <thead><tr><th>機能</th><th>説明</th><th>技術</th></tr></thead>
++  <tbody>
++    <tr><td>Window/Level</td><td>マウスドラッグで WC/WW 調整</td><td>Cornerstone3D WindowLevelTool</td></tr>
++    <tr><td>Zoom / Pan / Rotate</td><td>拡大・移動・回転</td><td>Cornerstone3D Tools</td></tr>
++    <tr><td>90° 回転</td><td>左回転 / 右回転</td><td>viewport.setRotation()</td></tr>
++    <tr><td>左右反転 / 上下反転</td><td>ミラー表示</td><td>viewport.setCamera(flip)</td></tr>
++    <tr><td>ネガ反転</td><td>明暗反転表示</td><td>viewport.setProperties(invert)</td></tr>
++    <tr><td>モダリティ別自動WL/WW</td><td>CT/MR/CR等に応じたプリセット自動適用</td><td>MODALITY_PRESETS</td></tr>
++    <tr><td>Auto WL/WW</td><td>画像内容からWL/WWを自動最適化</td><td><span class="badge badge-wasm">Wasm</span> パーセンタイル分析</td></tr>
++  </tbody>
++</table>
++
++<h3>4.3 計測・アノテーション</h3>
++<table>
++  <thead><tr><th>ツール</th><th>用途</th></tr></thead>
++  <tbody>
++    <tr><td>Length</td><td>長さ計測 (mm)</td></tr>
++    <tr><td>Angle</td><td>角度計測 (°)</td></tr>
++    <tr><td>Bidirectional</td><td>二方向計測（腫瘍サイズ）</td></tr>
++    <tr><td>CircleROI</td><td>円形ROI + 面積・平均HU</td></tr>
++    <tr><td>RectangleROI</td><td>矩形ROI + 統計値</td></tr>
++    <tr><td>PlanarFreehandROI</td><td>フリーハンド描画ROI</td></tr>
++    <tr><td>Probe</td><td>ピクセル値（HU）表示</td></tr>
++    <tr><td>ArrowAnnotate</td><td>矢印アノテーション</td></tr>
++  </tbody>
++</table>
++
++<h3>4.4 計測管理</h3>
++<table>
++  <thead><tr><th>機能</th><th>説明</th></tr></thead>
++  <tbody>
++    <tr><td>計測テーブル</td><td>全アノテーション・計測値のリアルタイム一覧</td></tr>
++    <tr><td>CSV エクスポート</td><td>計測データを BOM付きUTF-8 CSV でダウンロード</td></tr>
++    <tr><td>Undo / Redo</td><td>アノテーション操作の取り消し・やり直し (Ctrl+Z/Y)</td></tr>
++    <tr><td>個別削除 / 全クリア</td><td>計測テーブルから操作</td></tr>
++  </tbody>
++</table>
++
++<h3>4.5 画像フィルタ <span class="badge badge-wasm">Wasm</span></h3>
++<table>
++  <thead><tr><th>フィルタ</th><th>処理</th><th>速度 (512×512)</th></tr></thead>
++  <tbody>
++    <tr><td>Sobel</td><td>エッジ検出</td><td>~8ms</td></tr>
++    <tr><td>Laplacian</td><td>エッジ強調</td><td>~6ms</td></tr>
++    <tr><td>Sharpen</td><td>アンシャープマスク</td><td>~5ms</td></tr>
++    <tr><td>Denoise</td><td>メディアンフィルタ</td><td>~12ms</td></tr>
++    <tr><td>Invert</td><td>明暗反転</td><td>&lt;1ms</td></tr>
++    <tr><td>Histogram Eq</td><td>ヒストグラム平坦化</td><td>~2ms</td></tr>
++  </tbody>
++</table>
++
++<h3>4.6 出力・共有</h3>
++<table>
++  <thead><tr><th>機能</th><th>説明</th></tr></thead>
++  <tbody>
++    <tr><td>スクリーンショット</td><td>現在のViewportをPNGでダウンロード</td></tr>
++    <tr><td>印刷</td><td>患者情報付きで新しいウィンドウで印刷</td></tr>
++  </tbody>
++</table>
++
++<h3>4.7 UI/UX</h3>
++<table>
++  <thead><tr><th>機能</th><th>説明</th></tr></thead>
++  <tbody>
++    <tr><td>4テーマ</td><td>Default / Medical / SaaS / Cyber（CSS変数切替）</td></tr>
++    <tr><td>シリーズパネル</td><td>仮想スクロール対応（2807スライスでも高速描画）</td></tr>
++    <tr><td>メタデータ検索</td><td>DICOMタグのリアルタイム検索・ハイライト</td></tr>
++    <tr><td>リアルタイムヒストグラム</td><td>WL/WW範囲をオーバーレイ表示</td></tr>
++    <tr><td>プログレスバー</td><td>ファイル読込のパーセンテージ付きプログレス</td></tr>
++    <tr><td>Error Boundary</td><td>コンポーネントエラーのグレースフルリカバリ</td></tr>
++    <tr><td>音声コマンド</td><td>Web Speech API で日本語/英語のハンズフリー操作</td></tr>
++    <tr><td>フルスクリーン</td><td>ブラウザフルスクリーンモード</td></tr>
++  </tbody>
++</table>
++
++<!-- 5. Innovative -->
++<h2 id="innovative">5. 革新的機能 <span class="badge badge-innovative">世界初</span></h2>
++
++<div class="card card-highlight">
++  <h3>5.1 AI Scout — リアルタイム異常検出ヒートマップ <span class="badge badge-wasm">Wasm</span></h3>
++  <p>スライス表示と同時に、<strong>統計的に異常な領域を自動検出してヒートマップで可視化</strong>する機能。MLモデル不要、完全ブラウザ内処理。</p>
++
++  <h3>処理パイプライン</h3>
++  <div class="flow">
++    <span class="flow-step">Canvas画像取得</span>
++    <span class="flow-arrow">→</span>
++    <span class="flow-step">グレースケール変換</span>
++    <span class="flow-arrow">→</span>
++    <span class="flow-step flow-wasm">Wasm: 16×16ブロック統計解析</span>
++    <span class="flow-arrow">→</span>
++    <span class="flow-step flow-wasm">Wasm: マハラノビス距離算出</span>
++    <span class="flow-arrow">→</span>
++    <span class="flow-step">ヒートマップ描画</span>
++  </div>
++
++  <h3>解析指標（各ブロック）</h3>
++  <table>
++    <thead><tr><th>指標</th><th>重み</th><th>検出対象</th></tr></thead>
++    <tbody>
++      <tr><td>局所平均値の偏差</td><td>0.3</td><td>濃度異常（結節、石灰化）</td></tr>
++      <tr><td>局所分散の偏差</td><td>0.4</td><td>テクスチャ異常（浸潤影、すりガラス影）</td></tr>
++      <tr><td>勾配強度の偏差</td><td>0.3</td><td>境界異常（腫瘤辺縁、骨折線）</td></tr>
++    </tbody>
++  </table>
++
++  <div class="wasm-callout">
++    <strong>性能:</strong> 512×512 画像 → 32×32 ヒートマップ生成: <strong>3-5ms</strong>。スクロール中もリアルタイムで更新される。JS実装の約15倍高速。
++  </div>
++
++  <h3>競合優位性</h3>
++  <table>
++    <thead><tr><th></th><th>TERASU AI Scout</th><th>他社 AI 読影支援</th></tr></thead>
++    <tbody>
++      <tr><td>サーバー</td><td>不要</td><td>必須（GPU サーバー）</td></tr>
++      <tr><td>データ送信</td><td>なし</td><td>クラウドに送信</td></tr>
++      <tr><td>レイテンシ</td><td>&lt;5ms</td><td>1-30秒</td></tr>
++      <tr><td>コスト</td><td>ゼロ</td><td>高額ライセンス</td></tr>
++      <tr><td>対応モダリティ</td><td>全て</td><td>特定モダリティのみ</td></tr>
++      <tr><td>オフライン動作</td><td>可能</td><td>不可</td></tr>
++    </tbody>
++  </table>
++</div>
++
++<div class="card card-highlight">
++  <h3>5.2 Smart Reading — インテリジェント読影ナビゲーション <span class="badge badge-wasm">Wasm</span></h3>
++  <p>全スライスの<strong>「情報量スコア」を自動計算</strong>し、重要なスライスを抽出・ナビゲーションするモード。2807枚のCTを線形にスクロールする代わりに、注目すべきスライスへ直接ジャンプ。</p>
++
++  <h3>スコアリングアルゴリズム</h3>
++  <div class="flow">
++    <span class="flow-step">スライス表示</span>
++    <span class="flow-arrow">→</span>
++    <span class="flow-step flow-wasm">Wasm: エントロピー計算</span>
++    <span class="flow-arrow">+</span>
++    <span class="flow-step flow-wasm">Wasm: エッジ密度計算</span>
++    <span class="flow-arrow">→</span>
++    <span class="flow-step">重要度スコア (0-1)</span>
++    <span class="flow-arrow">→</span>
++    <span class="flow-step">隣接差分ブースト</span>
++  </div>
++
++  <table>
++    <thead><tr><th>スコア成分</th><th>重み</th><th>意味</th></tr></thead>
++    <tbody>
++      <tr><td>Shannon エントロピー</td><td>0.5</td><td>画像の情報量（均一な領域はスコア低）</td></tr>
++      <tr><td>エッジ密度</td><td>0.5</td><td>解剖学的構造の複雑さ</td></tr>
++      <tr><td>隣接差分ブースト</td><td>加算</td><td>前後スライスと大きく異なるスライスを強調</td></tr>
++    </tbody>
++  </table>
++
++  <h3>UI表示</h3>
++  <ul style="padding-left: 20px; color: var(--text-dim);">
++    <li><strong>左パネル:</strong> 各スライスに重要度バー表示（赤=高、青=中、灰=低）</li>
++    <li><strong>ツールバー:</strong> ⚡ ボタンで次の注目スライスへジャンプ</li>
++    <li><strong>閾値:</strong> 上位20%のスコアをキーフレームとして認識</li>
++  </ul>
++
++  <div class="wasm-callout">
++    <strong>性能:</strong> 1スライスあたり ~1-2ms。スクロール時にバックグラウンドで蓄積計算。読影ワークフローを妨げない。
++  </div>
++</div>
++
++<!-- 6. Performance -->
++<h2 id="performance">6. 性能最適化</h2>
++
++<h3>6.1 メモリ管理</h3>
++<table>
++  <thead><tr><th>最適化</th><th>内容</th><th>効果</th></tr></thead>
++  <tbody>
++    <tr><td>キャッシュ自動パージ</td><td>IMAGE_LOADED イベントで使用量を監視、90%超過時に60%まで自動解放</td><td>CACHE_SIZE_EXCEEDED エラー防止</td></tr>
++    <tr><td>モード切替パージ</td><td>2D↔MPR↔3D 切替時に cache.purgeCache()</td><td>不要データの即時解放</td></tr>
++    <tr><td>MPR プリロード即解放</td><td>メタデータ登録後に個別画像キャッシュを即解放</td><td>ピークメモリ 50% 削減</td></tr>
++    <tr><td>動的ダウンサンプル</td><td>≤300枚: 全スライス / >300枚: GPU能力に応じてダウンサンプル</td><td>メモリと画質のバランス</td></tr>
++    <tr><td>GPU適応</td><td>WebGPU/WebGL2 自動検出、能力に応じたスライス数調整</td><td>環境別最適化</td></tr>
++  </tbody>
++</table>
++
++<h3>6.2 レンダリング性能</h3>
++<table>
++  <thead><tr><th>最適化</th><th>内容</th></tr></thead>
++  <tbody>
++    <tr><td>仮想スクロール</td><td>SeriesPanel: 2807スライスでも可視範囲+オーバースキャンのみDOM生成</td></tr>
++    <tr><td>React.memo</td><td>MetadataPanel, SeriesPanel, MeasurementPanel をメモ化</td></tr>
++    <tr><td>イベント駆動</td><td>MeasurementPanel: 1秒ポーリング → Cornerstone アノテーションイベント</td></tr>
++    <tr><td>プリフェッチ制限</td><td>stackPrefetch を最大10枚に制限</td></tr>
++    <tr><td>debounce無効化</td><td>StackScrollTool の debounceIfNotLoaded=false で巻き戻り防止</td></tr>
++  </tbody>
++</table>
++
++<!-- 7. Shortcuts -->
++<h2 id="shortcuts">7. キーボードショートカット</h2>
++<div class="card">
++  <div class="shortcut-grid">
++    <div class="shortcut"><kbd>W</kbd> Window/Level</div>
++    <div class="shortcut"><kbd>Z</kbd> Zoom</div>
++    <div class="shortcut"><kbd>P</kbd> Pan</div>
++    <div class="shortcut"><kbd>R</kbd> Rotate</div>
++    <div class="shortcut"><kbd>L</kbd> 長さ計測</div>
++    <div class="shortcut"><kbd>A</kbd> 角度計測</div>
++    <div class="shortcut"><kbd>B</kbd> 二方向計測</div>
++    <div class="shortcut"><kbd>C</kbd> 円ROI</div>
++    <div class="shortcut"><kbd>H</kbd> 左右反転</div>
++    <div class="shortcut"><kbd>V</kbd> 上下反転</div>
++    <div class="shortcut"><kbd>,</kbd> 90°左回転</div>
++    <div class="shortcut"><kbd>.</kbd> 90°右回転</div>
++    <div class="shortcut"><kbd>I</kbd> ネガ反転</div>
++    <div class="shortcut"><kbd>F</kbd> フィット</div>
++    <div class="shortcut"><kbd>S</kbd> スクリーンショット</div>
++    <div class="shortcut"><kbd>Space</kbd> Cine再生/停止</div>
++    <div class="shortcut"><kbd>+</kbd> Cine速度アップ</div>
++    <div class="shortcut"><kbd>-</kbd> Cine速度ダウン</div>
++    <div class="shortcut"><kbd>↑↓</kbd> スライス送り</div>
++    <div class="shortcut"><kbd>1</kbd> 1×1 レイアウト</div>
++    <div class="shortcut"><kbd>2</kbd> 1×2 レイアウト</div>
++    <div class="shortcut"><kbd>4</kbd> 2×2 レイアウト</div>
++    <div class="shortcut"><kbd>Esc</kbd> リセット</div>
++    <div class="shortcut"><kbd>Ctrl+Z</kbd> Undo</div>
++    <div class="shortcut"><kbd>Ctrl+Y</kbd> Redo</div>
++  </div>
++</div>
++
++<!-- 8. Tech Stack -->
++<h2 id="tech">8. 技術スタック</h2>
++<table>
++  <thead><tr><th>レイヤー</th><th>技術</th><th>用途</th></tr></thead>
++  <tbody>
++    <tr><td>Build</td><td>Vite 8.x</td><td>HMR, Wasm対応, COOP/COEP</td></tr>
++    <tr><td>UI</td><td>React 18 + TypeScript</td><td>コンポーネント, CSS Modules</td></tr>
++    <tr><td>Rendering</td><td>Cornerstone3D v4.20</td><td>WebGL, Stack/Volume/Orthographic Viewport</td></tr>
++    <tr><td>Tools</td><td>Cornerstone3D Tools</td><td>WL/WW, Zoom, Pan, ROI, Measurement, Crosshairs</td></tr>
++    <tr><td>DICOM Parse</td><td>dicom-parser</td><td>ヘッダ解析, シリーズグループ化</td></tr>
++    <tr><td>Wasm</td><td>Rust + wasm-pack</td><td>フィルタ, AI Scout, Smart Reading, Auto WL/WW</td></tr>
++    <tr><td>Icons</td><td>Lucide React</td><td>UIアイコン</td></tr>
++    <tr><td>Voice</td><td>Web Speech API</td><td>音声コマンド（日英対応）</td></tr>
++    <tr><td>Test</td><td>Vitest + Testing Library</td><td>15テストスイート</td></tr>
++  </tbody>
++</table>
++
++<!-- 9. File Structure -->
++<h2 id="files">9. ファイル構成</h2>
++<div class="card">
++<pre>
++src/
++├── App.tsx                        # ルートコンポーネント（全state管理）
++├── components/
++│   ├── Header.tsx                 # ヘッダー（ファイル開く、テーマ、フルスクリーン）
++│   ├── Toolbar.tsx                # ツールバー（全ツールボタン、レイアウト、Cine、AI Scout）
++│   ├── Viewport.tsx               # 2D StackViewport + フィルタ + AI Scoutヒートマップ
++│   ├── ViewportGrid.tsx           # MPR / 3D VR レイアウト
++│   ├── ViewportLayout.tsx         # マルチビューポートグリッド（1×2, 2×2）
++│   ├── SeriesPanel.tsx            # シリーズ一覧 + 仮想スクロールスライスリスト + 重要度バー
++│   ├── MetadataPanel.tsx          # DICOMタグ表示 + 検索
++│   ├── MeasurementPanel.tsx       # 計測テーブル + CSV出力 + Undo/Redo
++│   ├── HistogramPanel.tsx         # リアルタイムヒストグラム表示
++│   ├── FilterPanel.tsx            # Wasmフィルタ選択UI
++│   ├── ErrorBoundary.tsx          # エラーバウンダリ
++│   ├── DropZone.tsx               # D&D + ファイル/フォルダ選択
++│   └── Toast.tsx                  # 通知システム
++├── core/
++│   ├── cornerstoneSetup.ts        # Cornerstone3D初期化 + キャッシュ自動パージ
++│   ├── toolSetup.ts               # ツール登録（14ツール）+ グループ管理
++│   ├── wasmBridge.ts              # Wasm初期化 + 全関数ディスパッチ
++│   ├── annotationHistory.ts       # Undo/Redo 履歴管理
++│   ├── voiceCommand.ts            # Web Speech API 音声コマンド
++│   ├── gpuDetect.ts               # WebGPU/WebGL2 能力検出
++│   ├── volumeLoader.ts            # ボリューム生成・キャッシュ管理
++│   ├── filterEngine.ts            # フィルタ適用ロジック
++│   ├── imageLoader.ts             # DICOM検証、ファイル登録
++│   ├── seriesManager.ts           # シリーズグループ化・並列バッチパース
++│   └── metadataProvider.ts        # メタデータストア
++├── hooks/
++│   ├── useCornerstone.ts          # 初期化Hook（Cornerstone + Wasm + GPU検出）
++│   ├── useVolume.ts               # ボリューム読込Hook
++│   ├── useTheme.ts                # テーマ切替Hook
++│   └── useToast.ts                # トースト通知Hook
++└── types/
++    └── dicom.ts                   # 型定義（ViewMode, LayoutType, FilterType, ActiveTool等）
++
++wasm/src/
++├── lib.rs                         # Wasmエクスポート定義（18関数）
++├── ai_scout.rs                    # <span style="color:var(--accent2)">★ AI Scout + Smart Reading エンジン</span>
++├── filters.rs                     # 画像フィルタ（Sobel, Laplacian, Sharpen, Denoise等）
++├── histogram.rs                   # ヒストグラム + Auto WL/WW + 匿名化 + 差分マップ
++└── pixel.rs                       # 16bit→8bit WL/WW変換
++</pre>
++</div>
++
++<div style="margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.8rem; text-align: center;">
++  TERASU DICOM Viewer — Design Document v4.0<br>
++  Generated 2026-03-24
++</div>
++
++</div>
++</body>
++</html>
+diff --git a/src/App.tsx b/src/App.tsx
+index f330694..c19586e 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,27 +1,34 @@
+-import { useState, useCallback } from 'react';
+-import { getRenderingEngine, metaData } from '@cornerstonejs/core';
++import { useState, useCallback, useEffect, useRef } from 'react';
++import { getRenderingEngine, metaData, cache } from '@cornerstonejs/core';
+ import { annotation } from '@cornerstonejs/tools';
+ import { useCornerstone } from './hooks/useCornerstone';
+ import { Header } from './components/Header';
+ import { Toolbar } from './components/Toolbar';
+ import { Viewport, VIEWPORT_ID, RENDERING_ENGINE_ID } from './components/Viewport';
+ import { ViewportGrid } from './components/ViewportGrid';
++import { ViewportLayout } from './components/ViewportLayout';
+ import { DropZone } from './components/DropZone';
+ import { MetadataPanel } from './components/MetadataPanel';
++import { MeasurementPanel } from './components/MeasurementPanel';
++import { HistogramPanel } from './components/HistogramPanel';
+ import { FilterPanel } from './components/FilterPanel';
+ import { ToastContainer } from './components/Toast';
++import { ErrorBoundary } from './components/ErrorBoundary';
+ import { SeriesPanel } from './components/SeriesPanel';
+ import { loadAndGroupFiles } from './core/seriesManager';
+ import { setActiveTool } from './core/toolSetup';
+-import { isWasmReady } from './core/wasmBridge';
++import { undo as annotationUndo, redo as annotationRedo } from './core/annotationHistory';
++import { isVoiceSupported, isVoiceActive, startVoiceRecognition, stopVoiceRecognition } from './core/voiceCommand';
++import { isWasmReady, autoWindowLevelU8 } from './core/wasmBridge';
+ import { createInitialFilterStates } from './core/filterEngine';
+ import { useToast } from './hooks/useToast';
+ import { useTheme } from './hooks/useTheme';
+ import { decodeDicomText } from './core/dicomTextDecoder';
+ import type {
+   ActiveTool, WLPreset, DicomMetadata, SeriesInfo,
+-  ViewMode, VRPreset, FilterType, FilterState,
++  ViewMode, VRPreset, FilterType, FilterState, LayoutType,
+ } from './types/dicom';
++import { MODALITY_PRESETS } from './types/dicom';
+ import './styles/globals.css';
+ 
+ const appStyle: React.CSSProperties = {
+@@ -125,9 +132,12 @@ function App() {
+   const [totalSlices, setTotalSlices] = useState(0);
+ 
+   // Phase 3 state
++  const [layout, setLayout] = useState<LayoutType>('1x1');
+   const [viewMode, setViewMode] = useState<ViewMode>('2d');
+   const [activeVRPreset, setActiveVRPreset] = useState<VRPreset | null>(null);
+   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
++  const [aiScoutEnabled, setAiScoutEnabled] = useState(false);
++  const [smartReadingScores, setSmartReadingScores] = useState<number[]>([]);
+   const [filters, setFilters] = useState<FilterState[]>(createInitialFilterStates);
+ 
+ 
+@@ -148,11 +158,15 @@ function App() {
+         patient: {
+           name: decodeDicomText(patient?.patientName?.Alphabetic ?? patient?.patientName ?? ''),
+           id: patient?.patientId ?? '',
+-          birthDate: patient?.patientBirthDate ?? '',
++          birthDate: typeof patient?.patientBirthDate === 'object' && patient?.patientBirthDate !== null
++            ? `${(patient.patientBirthDate as { year: number; month: number; day: number }).year}${String((patient.patientBirthDate as { year: number; month: number; day: number }).month).padStart(2, '0')}${String((patient.patientBirthDate as { year: number; month: number; day: number }).day).padStart(2, '0')}`
++            : String(patient?.patientBirthDate ?? ''),
+           sex: patient?.patientSex ?? '',
+         },
+         study: {
+-          date: study?.studyDate ?? '',
++          date: typeof study?.studyDate === 'object' && study?.studyDate !== null
++            ? `${(study.studyDate as { year: number; month: number; day: number }).year}${String((study.studyDate as { year: number; month: number; day: number }).month).padStart(2, '0')}${String((study.studyDate as { year: number; month: number; day: number }).day).padStart(2, '0')}`
++            : String(study?.studyDate ?? ''),
+           description: decodeDicomText(study?.studyDescription ?? ''),
+           accessionNumber: study?.accessionNumber ?? '',
+         },
+@@ -215,18 +229,23 @@ function App() {
+   }, []);
+ 
+   const [loadProgress, setLoadProgress] = useState<string | null>(null);
++  const [loadPercent, setLoadPercent] = useState(0);
+ 
+   const handleFilesSelected = useCallback(async (files: File[]) => {
+     setLoadProgress('ファイルを解析中...');
++    setLoadPercent(0);
+ 
+     const { seriesList: newSeriesList, skipped } = await loadAndGroupFiles(
+       files,
+       (progress) => {
+-        setLoadProgress(`解析中: ${progress.loaded} / ${progress.total}`);
++        const pct = Math.round((progress.loaded / progress.total) * 100);
++        setLoadPercent(pct);
++        setLoadProgress(`解析中: ${progress.loaded} / ${progress.total} (${pct}%)`);
+       },
+     );
+ 
+     setLoadProgress(null);
++    setLoadPercent(0);
+ 
+     if (skipped.length > 0 && skipped.length <= 5) {
+       addToast(`スキップされたファイル: ${skipped.join(', ')}`, 'error');
+@@ -247,6 +266,14 @@ function App() {
+     setViewportError(null);
+     setViewMode('2d');
+ 
++    // Auto-apply modality-specific WL/WW
++    const modality = newSeriesList[0].modality?.toUpperCase();
++    if (modality && MODALITY_PRESETS[modality]) {
++      const preset = MODALITY_PRESETS[modality];
++      setWindowCenter(preset.windowCenter);
++      setWindowWidth(preset.windowWidth);
++    }
++
+     const totalFiles = newSeriesList.reduce((sum, s) => sum + s.imageCount, 0);
+     if (files.length === 1) {
+       setFilename(files[0].name);
+@@ -259,6 +286,8 @@ function App() {
+     setActiveSeriesIndex(index);
+     const series = seriesList[index];
+     if (!series) return;
++    // Purge cache when switching series to free memory
++    cache.purgeCache();
+     setImageIds(series.imageIds);
+     setCurrentSlice(0);
+     setTotalSlices(series.imageCount);
+@@ -301,6 +330,198 @@ function App() {
+     }).catch(console.error);
+   }, []);
+ 
++  // Auto WL/WW — Wasm histogram percentile analysis
++  const handleAutoWL = useCallback(() => {
++    if (!isWasmReady()) {
++      addToast('Wasmモジュールが未ロードです', 'error');
++      return;
++    }
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const canvas = viewport.getCanvas();
++    if (!canvas) return;
++
++    const ctx = canvas.getContext('2d', { willReadFrequently: true });
++    if (!ctx) return;
++    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
++    const rgba = imageData.data;
++    const pixels = canvas.width * canvas.height;
++    const grayscale = new Uint8Array(pixels);
++    for (let i = 0; i < pixels; i++) {
++      grayscale[i] = rgba[i * 4]; // R channel as grayscale
++    }
++
++    const { windowCenter: wc, windowWidth: ww } = autoWindowLevelU8(grayscale);
++
++    // Map 8-bit range back to actual HU range using current VOI
++    const props = viewport.getProperties();
++    const currentRange = props.voiRange;
++    if (currentRange) {
++      const currentWW = currentRange.upper - currentRange.lower;
++      const currentWC = currentRange.lower + currentWW / 2;
++      // Scale: 8-bit wc/ww → actual range
++      const scale = currentWW / 255;
++      const newWC = currentRange.lower + wc * scale;
++      const newWW = ww * scale;
++      viewport.setProperties({
++        voiRange: { lower: newWC - newWW / 2, upper: newWC + newWW / 2 },
++      });
++      setWindowCenter(newWC);
++      setWindowWidth(newWW);
++    } else {
++      viewport.setProperties({
++        voiRange: { lower: wc - ww / 2, upper: wc + ww / 2 },
++      });
++      setWindowCenter(wc);
++      setWindowWidth(ww);
++    }
++    viewport.render();
++    addToast(`Auto WL: WC=${Math.round(windowCenter)} WW=${Math.round(windowWidth)}`, 'info');
++  }, [addToast, windowCenter, windowWidth]);
++
++  // Flip horizontal
++  const handleFlipH = useCallback(() => {
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const camera = viewport.getCamera();
++    viewport.setCamera({ flipHorizontal: !camera.flipHorizontal });
++    viewport.render();
++  }, []);
++
++  // Flip vertical
++  const handleFlipV = useCallback(() => {
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const camera = viewport.getCamera();
++    viewport.setCamera({ flipVertical: !camera.flipVertical });
++    viewport.render();
++  }, []);
++
++  // Invert (negative)
++  const handleInvert = useCallback(() => {
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const props = viewport.getProperties();
++    viewport.setProperties({ invert: !props.invert });
++    viewport.render();
++  }, []);
++
++  // Cine playback
++  const [cineActive, setCineActive] = useState(false);
++  const [cineFps, setCineFps] = useState(10);
++  const [voiceActive, setVoiceActive] = useState(false);
++  const cineIntervalRef = useRef<number>(0);
++  const cineFpsRef = useRef(cineFps);
++  cineFpsRef.current = cineFps;
++
++  const stopCine = useCallback(() => {
++    clearInterval(cineIntervalRef.current);
++    cineIntervalRef.current = 0;
++    setCineActive(false);
++  }, []);
++
++  const startCine = useCallback(() => {
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport || viewport.getImageIds().length <= 1) return;
++
++    // Clear any existing interval
++    if (cineIntervalRef.current) clearInterval(cineIntervalRef.current);
++
++    setCineActive(true);
++    cineIntervalRef.current = window.setInterval(() => {
++      const eng = getRenderingEngine(RENDERING_ENGINE_ID);
++      if (!eng) { stopCine(); return; }
++      const vp = eng.getStackViewport(VIEWPORT_ID);
++      if (!vp) return;
++      const idx = vp.getCurrentImageIdIndex();
++      const t = vp.getImageIds().length;
++      const next = (idx + 1) % t;
++      vp.setImageIdIndex(next).then(() => vp.render()).catch(() => {});
++    }, Math.round(1000 / cineFpsRef.current));
++  }, [stopCine]);
++
++  const handleToggleCine = useCallback(() => {
++    if (cineActive) stopCine();
++    else startCine();
++  }, [cineActive, stopCine, startCine]);
++
++  const handleCineFaster = useCallback(() => {
++    const newFps = Math.min(cineFps + 5, 60);
++    setCineFps(newFps);
++    if (cineActive) { stopCine(); setTimeout(startCine, 0); }
++    addToast(`Cine: ${newFps} fps`, 'info');
++  }, [cineFps, cineActive, stopCine, startCine, addToast]);
++
++  const handleCineSlower = useCallback(() => {
++    const newFps = Math.max(cineFps - 5, 1);
++    setCineFps(newFps);
++    if (cineActive) { stopCine(); setTimeout(startCine, 0); }
++    addToast(`Cine: ${newFps} fps`, 'info');
++  }, [cineFps, cineActive, stopCine, startCine, addToast]);
++
++  // Rotate 90 degrees
++  const handleRotate90 = useCallback((clockwise: boolean) => {
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const rotation = viewport.getRotation();
++    viewport.setRotation(rotation + (clockwise ? 90 : -90));
++    viewport.render();
++  }, []);
++
++  // Print
++  const handlePrint = useCallback(() => {
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const canvas = viewport.getCanvas();
++    if (!canvas) return;
++    const dataUrl = canvas.toDataURL('image/png');
++    const printWin = window.open('', '_blank');
++    if (!printWin) return;
++    const m = metadata;
++    const info = m
++      ? `<div style="font-family:monospace;font-size:12px;margin-bottom:8px">
++           <b>${m.patient.name}</b> (${m.patient.id}) | ${m.series.modality} | ${m.study.description || ''} | ${m.study.date || ''}
++         </div>`
++      : '';
++    printWin.document.write(`
++      <html><head><title>DICOM Print</title></head>
++      <body style="margin:0;padding:16px;background:#000;color:#fff">
++        ${info}
++        <img src="${dataUrl}" style="max-width:100%;max-height:90vh" />
++        <script>window.onload=function(){window.print();window.close();}<\/script>
++      </body></html>
++    `);
++    printWin.document.close();
++  }, [metadata]);
++
++  // Screenshot
++  const handleScreenshot = useCallback(() => {
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const canvas = viewport.getCanvas();
++    if (!canvas) return;
++    const link = document.createElement('a');
++    link.download = `screenshot_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.png`;
++    link.href = canvas.toDataURL('image/png');
++    link.click();
++  }, []);
++
+   const handleReset = useCallback(() => {
+     // Clear all annotations
+     try {
+@@ -331,6 +552,12 @@ function App() {
+       length: 'Length',
+       angle: 'Angle',
+       arrowAnnotate: 'ArrowAnnotate',
++      circleROI: 'CircleROI',
++      ellipticalROI: 'EllipticalROI',
++      rectangleROI: 'RectangleROI',
++      freehandROI: 'PlanarFreehandROI',
++      probe: 'Probe',
++      bidirectional: 'Bidirectional',
+       crosshairs: 'Crosshairs',
+     };
+     setActiveTool(toolNameMap[tool]);
+@@ -387,10 +614,8 @@ function App() {
+ 
+   const handleViewModeChange = useCallback((mode: ViewMode) => {
+     if (mode === viewMode) return;
+-    if (mode === '3d-vr') {
+-      addToast('3D VR は現在開発中です', 'error');
+-      return;
+-    }
++    // Purge cache before switching to free memory
++    cache.purgeCache();
+     setViewMode(mode);
+     setViewportKey((k) => k + 1);
+     if (mode === '2d') {
+@@ -402,10 +627,275 @@ function App() {
+     setActiveVRPreset(preset);
+   }, []);
+ 
++  const handleLayoutChange = useCallback((newLayout: LayoutType) => {
++    setLayout(newLayout);
++  }, []);
++
+   const handleToggleFilters = useCallback(() => {
+     setFilterPanelOpen((prev) => !prev);
+   }, []);
+ 
++  // Voice commands — defined after all handlers to avoid circular refs
++  const handleToggleVoice = useCallback(() => {
++    if (!isVoiceSupported()) {
++      addToast('このブラウザは音声認識に対応していません', 'error');
++      return;
++    }
++    if (voiceActive) {
++      stopVoiceRecognition();
++      setVoiceActive(false);
++      addToast('音声コマンド停止', 'info');
++    } else {
++      const started = startVoiceRecognition({
++        onCommand: (cmd: string) => {
++          // Dispatch voice command as synthetic keyboard event
++          const keyMap: Record<string, string> = {
++            next: 'ArrowDown', prev: 'ArrowUp',
++            zoom: 'z', pan: 'p', rotate: 'r', windowLevel: 'w',
++            length: 'l', angle: 'a', reset: 'Escape', fit: 'f',
++            invert: 'i', flipH: 'h', flipV: 'v',
++            screenshot: 's', cine: ' ', cineStop: ' ', autoWL: 'o',
++          };
++          const key = keyMap[cmd];
++          if (key) {
++            window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
++          }
++        },
++      });
++      if (started) {
++        setVoiceActive(true);
++        addToast('音声コマンド開始 — 「次」「ズーム」「リセット」等', 'info');
++      }
++    }
++  }, [voiceActive, addToast]);
++
++  // Global keyboard shortcuts
++  useEffect(() => {
++    const handler = (e: KeyboardEvent) => {
++      // Ignore when typing in inputs
++      const tag = (e.target as HTMLElement)?.tagName;
++      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
++
++      // Ctrl+Z / Ctrl+Y for annotation undo/redo
++      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
++        e.preventDefault();
++        if (e.shiftKey) annotationRedo();
++        else annotationUndo();
++        return;
++      }
++      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
++        e.preventDefault();
++        annotationRedo();
++        return;
++      }
++
++      switch (e.key.toLowerCase()) {
++        case 'w': handleToolChange('windowLevel'); break;
++        case 'z': handleToolChange('zoom'); break;
++        case 'p': handleToolChange('pan'); break;
++        case 'r': handleToolChange('rotate'); break;
++        case 'l': handleToolChange('length'); break;
++        case 'a': handleToolChange('angle'); break;
++        case 'b': handleToolChange('bidirectional'); break;
++        case 'c': handleToolChange('circleROI'); break;
++        case 'arrowup':
++          e.preventDefault();
++          handlePrevSlice();
++          break;
++        case 'arrowdown':
++          e.preventDefault();
++          handleNextSlice();
++          break;
++        case 'f':
++          if (!e.ctrlKey && !e.metaKey) handleFitToWindow();
++          break;
++        case 'h': handleFlipH(); break;
++        case 'v': handleFlipV(); break;
++        case 'i': handleInvert(); break;
++        case ' ':
++          e.preventDefault();
++          handleToggleCine();
++          break;
++        case '+':
++        case '=':
++          handleCineFaster();
++          break;
++        case '-':
++          handleCineSlower();
++          break;
++        case 's':
++          if (!e.ctrlKey && !e.metaKey) handleScreenshot();
++          break;
++        case ',': handleRotate90(false); break;
++        case '.': handleRotate90(true); break;
++        case 'escape':
++          handleReset();
++          break;
++        case '1':
++          handleLayoutChange('1x1');
++          break;
++        case '2':
++          handleLayoutChange('1x2');
++          break;
++        case '4':
++          handleLayoutChange('2x2');
++          break;
++      }
++    };
++    window.addEventListener('keydown', handler);
++    return () => window.removeEventListener('keydown', handler);
++  }, [handleToolChange, handlePrevSlice, handleNextSlice, handleFitToWindow, handleReset, handleLayoutChange, handleFlipH, handleFlipV, handleInvert, handleToggleCine, handleCineFaster, handleCineSlower, handleScreenshot, handleRotate90]);
++
++  const handleToggleAiScout = useCallback(() => {
++    const next = !aiScoutEnabled;
++    setAiScoutEnabled(next);
++    if (next) {
++      addToast('変化マップ ON — 前スライスからの変化領域をハイライト', 'info');
++    }
++  }, [aiScoutEnabled, addToast]);
++
++  // Smart Reading: batch compute importance for all slices on series load.
++  // Uses imageLoader to get raw pixel data, downsamples to 128×128 in Wasm.
++  const smartReadingAbortRef = useRef(false);
++
++  const computeAllSliceScores = useCallback(async (ids: string[]) => {
++    if (!isWasmReady() || ids.length <= 1) return;
++    smartReadingAbortRef.current = false;
++    setSmartReadingScores(new Array(ids.length).fill(-1));
++    addToast(`Smart Reading: ${ids.length}スライスを解析中...`, 'info');
++
++    const { imageLoader } = await import('@cornerstonejs/core');
++    const BATCH = 10;
++    const scores = new Array(ids.length).fill(-1);
++    const t0 = performance.now();
++
++    for (let i = 0; i < ids.length; i += BATCH) {
++      if (smartReadingAbortRef.current) return;
++      const batch = ids.slice(i, i + BATCH);
++      const results = await Promise.all(
++        batch.map(async (id, j) => {
++          try {
++            const image = await imageLoader.loadAndCacheImage(id);
++            // Get pixel data as u8 — use getPixelData if available
++            const pixelData = image.getPixelData();
++            const w = image.width;
++            const h = image.height;
++
++            // Convert to u8 grayscale
++            let u8Data: Uint8Array;
++            if (pixelData instanceof Uint8Array || pixelData instanceof Uint8ClampedArray) {
++              u8Data = new Uint8Array(pixelData);
++            } else {
++              // 16-bit: simple linear scale to 8-bit
++              const i16 = pixelData instanceof Int16Array ? pixelData : new Int16Array(pixelData.buffer);
++              let minVal = 32767, maxVal = -32768;
++              for (let k = 0; k < i16.length; k++) {
++                if (i16[k] < minVal) minVal = i16[k];
++                if (i16[k] > maxVal) maxVal = i16[k];
++              }
++              const range = maxVal - minVal || 1;
++              u8Data = new Uint8Array(i16.length);
++              for (let k = 0; k < i16.length; k++) {
++                u8Data[k] = Math.round(((i16[k] - minVal) / range) * 255);
++              }
++            }
++
++            // Compute importance with internal 128×128 downsample
++            const { computeSliceImportanceDownsampled } = await import('./core/wasmBridge');
++            return { idx: i + j, score: computeSliceImportanceDownsampled(u8Data, w, h) };
++          } catch {
++            return { idx: i + j, score: 0 };
++          }
++        }),
++      );
++
++      for (const r of results) {
++        scores[r.idx] = r.score;
++      }
++
++      // Free images from cache immediately to save memory
++      for (const id of batch) {
++        try { cache.removeImageLoadObject(id); } catch { /* ok */ }
++      }
++
++      // Update UI progressively
++      setSmartReadingScores([...scores]);
++    }
++
++    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
++    console.log(`[Smart Reading] ${ids.length} slices scored in ${elapsed}s`);
++    addToast(`Smart Reading 完了: ${ids.length}スライス (${elapsed}s)`, 'info');
++  }, [addToast]);
++
++  // Trigger score computation when imageIds change
++  useEffect(() => {
++    if (imageIds.length > 1) {
++      computeAllSliceScores(imageIds);
++    }
++    return () => { smartReadingAbortRef.current = true; };
++  }, [imageIds]); // eslint-disable-line react-hooks/exhaustive-deps
++
++  // Find keyframe slices: local peaks with minimum gap
++  const keyframeSlices = useCallback((): number[] => {
++    const scores = smartReadingScores;
++    if (scores.length < 3) return [];
++
++    const computed = scores.filter((s) => s >= 0);
++    if (computed.length < 3) return [];
++
++    // Find local peaks: score[i] > score[i-1] AND score[i] > score[i+1]
++    const peaks: { idx: number; score: number }[] = [];
++    const window = 5; // Compare with ±5 neighbors
++    for (let i = window; i < scores.length - window; i++) {
++      if (scores[i] < 0) continue;
++      let isLocalMax = true;
++      for (let j = -window; j <= window; j++) {
++        if (j === 0) continue;
++        const ni = i + j;
++        if (ni >= 0 && ni < scores.length && scores[ni] >= scores[i]) {
++          isLocalMax = false;
++          break;
++        }
++      }
++      if (isLocalMax) peaks.push({ idx: i, score: scores[i] });
++    }
++
++    if (peaks.length === 0) return [];
++
++    // Keep only top peaks with minimum gap of 10 slices
++    peaks.sort((a, b) => b.score - a.score);
++    const minGap = Math.max(10, Math.floor(scores.length / 30));
++    const selected: number[] = [];
++    for (const peak of peaks) {
++      const tooClose = selected.some((s) => Math.abs(s - peak.idx) < minGap);
++      if (!tooClose) selected.push(peak.idx);
++    }
++
++    selected.sort((a, b) => a - b);
++    console.log(`[Smart Reading] ${selected.length} keyframes from ${peaks.length} peaks (gap=${minGap})`);
++    return selected;
++  }, [smartReadingScores]);
++
++  // Navigate to next keyframe
++  const handleNextKeyframe = useCallback(() => {
++    const kf = keyframeSlices();
++    if (kf.length === 0) {
++      addToast('キーフレームが見つかりません（解析中の可能性あり）', 'info');
++      return;
++    }
++
++    // Find next keyframe after current slice
++    const next = kf.find((i) => i > currentSlice);
++    const target = next ?? kf[0]; // Wrap around
++
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    viewport.setImageIdIndex(target).then(() => viewport.render()).catch(() => {});
++    addToast(`キーフレーム: スライス ${target + 1} / ${smartReadingScores.length}`, 'info');
++  }, [keyframeSlices, currentSlice, smartReadingScores.length, addToast]);
++
+   const handleToggleFilter = useCallback((type: FilterType) => {
+     setFilters((prev) =>
+       prev.map((f) => f.type === type ? { ...f, enabled: !f.enabled } : f)
+@@ -454,8 +944,10 @@ function App() {
+         currentSlice={currentSlice}
+         totalSlices={totalSlices}
+         viewMode={viewMode}
++        layout={layout}
+         filterPanelOpen={filterPanelOpen}
+         hasImages={imageIds.length > 0}
++        cineActive={cineActive}
+         onToolChange={handleToolChange}
+         onPresetSelect={handlePresetSelect}
+         onFitToWindow={handleFitToWindow}
+@@ -464,7 +956,25 @@ function App() {
+         onPrevSlice={handlePrevSlice}
+         onNextSlice={handleNextSlice}
+         onReset={handleReset}
++        onFlipH={handleFlipH}
++        onFlipV={handleFlipV}
++        onRotate90={handleRotate90}
++        onInvert={handleInvert}
++        onToggleCine={handleToggleCine}
++        onCineFaster={handleCineFaster}
++        onCineSlower={handleCineSlower}
++        cineFps={cineFps}
++        onScreenshot={handleScreenshot}
++        onPrint={handlePrint}
++        onAutoWL={handleAutoWL}
++        onToggleVoice={handleToggleVoice}
++        voiceActive={voiceActive}
++        aiScoutEnabled={aiScoutEnabled}
++        onToggleAiScout={handleToggleAiScout}
++        onNextKeyframe={handleNextKeyframe}
++        smartReadingAvailable={smartReadingScores.some((s) => s >= 0)}
+         onViewModeChange={handleViewModeChange}
++        onLayoutChange={handleLayoutChange}
+         onVRPresetSelect={handleVRPresetSelect}
+         onToggleFilters={handleToggleFilters}
+       />
+@@ -475,16 +985,22 @@ function App() {
+               seriesList={seriesList}
+               activeSeriesIndex={activeSeriesIndex}
+               activeSliceIndex={currentSlice}
++              importanceScores={smartReadingScores}
+               onSeriesSelect={handleSeriesSelect}
+               onSliceSelect={handleSliceSelect}
+             />
+           </aside>
+         )}
+         <main style={centerPanelStyle}>
+-          {viewMode === '2d' && ready && (
++          <ErrorBoundary fallbackMessage="ビューポートでエラーが発生しました">
++          {viewMode === '2d' && ready && layout === '1x1' && (
+             <Viewport
+               imageIds={imageIds}
+               activeFilters={filters}
++              metadata={metadata}
++              windowCenter={windowCenter}
++              windowWidth={windowWidth}
++              aiScoutEnabled={aiScoutEnabled}
+               onVoiChange={handleVoiChange}
+               onImageRendered={handleImageRendered}
+               onImageLoadFailed={handleImageLoadFailed}
+@@ -492,7 +1008,18 @@ function App() {
+               error={viewportError}
+             />
+           )}
+-          {viewMode === 'mpr' && imageIds.length > 0 && (
++          {viewMode === '2d' && ready && layout !== '1x1' && seriesList.length > 0 && (
++            <ViewportLayout
++              key={`layout-${layout}-${viewportKey}`}
++              layout={layout}
++              seriesList={seriesList}
++              activeFilters={filters}
++              onVoiChange={handleVoiChange}
++              onImageRendered={handleImageRendered}
++              onSliceChange={handleSliceChange}
++            />
++          )}
++          {(viewMode === 'mpr' || viewMode === '3d-vr') && imageIds.length > 0 && (
+             <ViewportGrid
+               key={`vol-${viewportKey}`}
+               imageIds={imageIds}
+@@ -505,8 +1032,14 @@ function App() {
+             <div style={loadingBarStyle}>
+               <span style={{ width: 12, height: 12, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+               {loadProgress}
++              {loadPercent > 0 && (
++                <div style={{ width: 120, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, overflow: 'hidden' }}>
++                  <div style={{ width: `${loadPercent}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.2s' }} />
++                </div>
++              )}
+             </div>
+           )}
++          </ErrorBoundary>
+           <DropZone
+             hasImages={imageIds.length > 0}
+             onFilesSelected={handleFilesSelected}
+@@ -515,6 +1048,10 @@ function App() {
+         {rightPanelOpen && (
+           <aside style={rightPanelStyle}>
+             <MetadataPanel metadata={metadata} />
++            <MeasurementPanel />
++            {viewMode === '2d' && imageIds.length > 0 && (
++              <HistogramPanel windowCenter={windowCenter} windowWidth={windowWidth} />
++            )}
+             {filterPanelOpen && viewMode === '2d' && (
+               <FilterPanel
+                 filters={filters}
+diff --git a/src/components/ErrorBoundary.tsx b/src/components/ErrorBoundary.tsx
+new file mode 100644
+index 0000000..ef18f9e
+--- /dev/null
++++ b/src/components/ErrorBoundary.tsx
+@@ -0,0 +1,78 @@
++import { Component } from 'react';
++import type { ErrorInfo, ReactNode } from 'react';
++import { AlertCircle, RotateCcw } from 'lucide-react';
++
++interface Props {
++  children: ReactNode;
++  fallbackMessage?: string;
++}
++
++interface State {
++  hasError: boolean;
++  error: Error | null;
++}
++
++export class ErrorBoundary extends Component<Props, State> {
++  constructor(props: Props) {
++    super(props);
++    this.state = { hasError: false, error: null };
++  }
++
++  static getDerivedStateFromError(error: Error): State {
++    return { hasError: true, error };
++  }
++
++  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
++    console.error('ErrorBoundary caught:', error, errorInfo);
++  }
++
++  handleReset = () => {
++    this.setState({ hasError: false, error: null });
++  };
++
++  render() {
++    if (this.state.hasError) {
++      return (
++        <div style={{
++          display: 'flex',
++          flexDirection: 'column',
++          alignItems: 'center',
++          justifyContent: 'center',
++          gap: 12,
++          padding: 24,
++          height: '100%',
++          color: 'var(--text-secondary)',
++          background: 'var(--bg-panel)',
++        }}>
++          <AlertCircle size={32} color="var(--accent-error)" />
++          <div style={{ fontSize: 'var(--font-size-sm)', textAlign: 'center' }}>
++            {this.props.fallbackMessage || 'コンポーネントでエラーが発生しました'}
++          </div>
++          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-disabled)', maxWidth: 400, wordBreak: 'break-all' }}>
++            {this.state.error?.message}
++          </div>
++          <button
++            onClick={this.handleReset}
++            style={{
++              display: 'flex',
++              alignItems: 'center',
++              gap: 6,
++              padding: '6px 16px',
++              border: '1px solid var(--border-subtle)',
++              borderRadius: 6,
++              background: 'var(--bg-surface)',
++              color: 'var(--text-primary)',
++              cursor: 'pointer',
++              fontSize: 'var(--font-size-sm)',
++            }}
++          >
++            <RotateCcw size={14} />
++            再試行
++          </button>
++        </div>
++      );
++    }
++
++    return this.props.children;
++  }
++}
+diff --git a/src/components/HistogramPanel.module.css b/src/components/HistogramPanel.module.css
+new file mode 100644
+index 0000000..0a4f4f1
+--- /dev/null
++++ b/src/components/HistogramPanel.module.css
+@@ -0,0 +1,30 @@
++.panel {
++  padding: 8px;
++  border-top: 1px solid var(--border-subtle);
++}
++
++.title {
++  font-size: var(--font-size-xs);
++  font-weight: 600;
++  color: var(--text-secondary);
++  margin-bottom: 6px;
++  text-transform: uppercase;
++  letter-spacing: 0.05em;
++}
++
++.canvas {
++  width: 100%;
++  height: 80px;
++  border-radius: 4px;
++  background: var(--bg-surface);
++  display: block;
++}
++
++.stats {
++  display: flex;
++  justify-content: space-between;
++  margin-top: 4px;
++  font-size: 10px;
++  color: var(--text-disabled);
++  font-family: var(--font-mono);
++}
+diff --git a/src/components/HistogramPanel.tsx b/src/components/HistogramPanel.tsx
+new file mode 100644
+index 0000000..1ff9879
+--- /dev/null
++++ b/src/components/HistogramPanel.tsx
+@@ -0,0 +1,99 @@
++import { useRef, useEffect, memo } from 'react';
++import { computeHistogram, isWasmReady } from '../core/wasmBridge';
++import { getRenderingEngine } from '@cornerstonejs/core';
++import { VIEWPORT_ID, RENDERING_ENGINE_ID } from './Viewport';
++import styles from './HistogramPanel.module.css';
++
++interface HistogramPanelProps {
++  windowCenter: number;
++  windowWidth: number;
++}
++
++export const HistogramPanel = memo(function HistogramPanel({ windowCenter, windowWidth }: HistogramPanelProps) {
++  const canvasRef = useRef<HTMLCanvasElement>(null);
++
++  useEffect(() => {
++    const canvas = canvasRef.current;
++    if (!canvas || !isWasmReady()) return;
++
++    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
++    if (!engine) return;
++    const viewport = engine.getStackViewport(VIEWPORT_ID);
++    if (!viewport) return;
++    const srcCanvas = viewport.getCanvas();
++    if (!srcCanvas) return;
++
++    const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
++    if (!srcCtx) return;
++
++    const imageData = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
++    const rgba = imageData.data;
++    const pixels = srcCanvas.width * srcCanvas.height;
++    const grayscale = new Uint8Array(pixels);
++    for (let i = 0; i < pixels; i++) {
++      grayscale[i] = rgba[i * 4];
++    }
++
++    let hist: Uint32Array;
++    try {
++      hist = computeHistogram(grayscale);
++    } catch {
++      return;
++    }
++
++    // Draw histogram
++    const ctx = canvas.getContext('2d');
++    if (!ctx) return;
++
++    const w = canvas.width;
++    const h = canvas.height;
++    ctx.clearRect(0, 0, w, h);
++
++    // Find max (skip 0 and 255 as they're often outliers)
++    let maxVal = 0;
++    for (let i = 1; i < 255; i++) {
++      if (hist[i] > maxVal) maxVal = hist[i];
++    }
++    if (maxVal === 0) return;
++
++    // Draw bars
++    const barWidth = w / 256;
++    ctx.fillStyle = 'rgba(74, 158, 255, 0.6)';
++    for (let i = 0; i < 256; i++) {
++      const barH = (hist[i] / maxVal) * h;
++      ctx.fillRect(i * barWidth, h - barH, barWidth + 0.5, barH);
++    }
++
++    // Draw WL/WW range indicator
++    // Map WC/WW to 0-255 range (approximate)
++    const lower = Math.max(0, ((windowCenter - windowWidth / 2) + 1024) / 4096 * 255);
++    const upper = Math.min(255, ((windowCenter + windowWidth / 2) + 1024) / 4096 * 255);
++
++    ctx.fillStyle = 'rgba(255, 200, 50, 0.15)';
++    ctx.fillRect(lower * barWidth, 0, (upper - lower) * barWidth, h);
++
++    ctx.strokeStyle = 'rgba(255, 200, 50, 0.7)';
++    ctx.lineWidth = 1;
++    ctx.setLineDash([3, 3]);
++    const centerX = ((windowCenter + 1024) / 4096 * 255) * barWidth;
++    ctx.beginPath();
++    ctx.moveTo(centerX, 0);
++    ctx.lineTo(centerX, h);
++    ctx.stroke();
++    ctx.setLineDash([]);
++  }, [windowCenter, windowWidth]);
++
++  if (!isWasmReady()) return null;
++
++  return (
++    <div className={styles.panel}>
++      <div className={styles.title}>ヒストグラム</div>
++      <canvas ref={canvasRef} className={styles.canvas} width={256} height={80} />
++      <div className={styles.stats}>
++        <span>0</span>
++        <span>WC:{Math.round(windowCenter)} WW:{Math.round(windowWidth)}</span>
++        <span>255</span>
++      </div>
++    </div>
++  );
++});
+diff --git a/src/components/MeasurementPanel.module.css b/src/components/MeasurementPanel.module.css
+new file mode 100644
+index 0000000..05359f2
+--- /dev/null
++++ b/src/components/MeasurementPanel.module.css
+@@ -0,0 +1,94 @@
++.panel {
++  flex: 1;
++  overflow-y: auto;
++  padding: 8px;
++  font-size: var(--font-size-sm);
++}
++
++.header {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  padding: 4px 0 8px;
++  border-bottom: 1px solid var(--border-subtle);
++  margin-bottom: 8px;
++}
++
++.title {
++  font-weight: 600;
++  color: var(--text-primary);
++  font-size: var(--font-size-sm);
++}
++
++.clearButton {
++  background: none;
++  border: 1px solid var(--border-subtle);
++  color: var(--text-secondary);
++  cursor: pointer;
++  padding: 2px 8px;
++  border-radius: 4px;
++  font-size: var(--font-size-xs);
++  transition: color 0.15s, border-color 0.15s;
++}
++
++.clearButton:hover {
++  color: var(--accent-error);
++  border-color: var(--accent-error);
++}
++
++.empty {
++  color: var(--text-secondary);
++  text-align: center;
++  padding: 16px 0;
++}
++
++.list {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.item {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  padding: 6px 8px;
++  background: var(--bg-elevated);
++  border-radius: 4px;
++  border: 1px solid var(--border-subtle);
++}
++
++.itemInfo {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  min-width: 0;
++}
++
++.itemType {
++  font-weight: 500;
++  color: var(--text-primary);
++  font-size: var(--font-size-xs);
++}
++
++.itemValue {
++  color: var(--accent);
++  font-variant-numeric: tabular-nums;
++  font-family: var(--font-mono);
++}
++
++.deleteButton {
++  background: none;
++  border: none;
++  color: var(--text-secondary);
++  cursor: pointer;
++  padding: 2px;
++  border-radius: 3px;
++  line-height: 1;
++  flex-shrink: 0;
++  transition: color 0.15s;
++}
++
++.deleteButton:hover {
++  color: var(--accent-error);
++}
+diff --git a/src/components/MeasurementPanel.tsx b/src/components/MeasurementPanel.tsx
+new file mode 100644
+index 0000000..b8c0821
+--- /dev/null
++++ b/src/components/MeasurementPanel.tsx
+@@ -0,0 +1,222 @@
++import { useState, useEffect, useCallback, memo } from 'react';
++import { eventTarget } from '@cornerstonejs/core';
++import { annotation, Enums as csToolsEnums } from '@cornerstonejs/tools';
++import { X, Download, Undo2, Redo2 } from 'lucide-react';
++import { recordAdd, recordRemove, undo, redo } from '../core/annotationHistory';
++import styles from './MeasurementPanel.module.css';
++
++interface MeasurementItem {
++  id: string;
++  toolName: string;
++  label: string;
++  value: string;
++}
++
++const TOOL_LABELS: Record<string, string> = {
++  Length: '長さ',
++  Angle: '角度',
++  Bidirectional: '二方向',
++  ArrowAnnotate: '矢印',
++  CircleROI: '円ROI',
++  EllipticalROI: '楕円ROI',
++  RectangleROI: '矩形ROI',
++  PlanarFreehandROI: 'フリーハンドROI',
++  Probe: 'プローブ',
++};
++
++function formatAnnotationValue(ann: { metadata?: { toolName?: string }; data?: Record<string, unknown> }): string {
++  const toolName = ann.metadata?.toolName ?? '';
++  const data = ann.data as Record<string, unknown> | undefined;
++  if (!data) return '';
++
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
++  const cachedStats = data.cachedStats as any;
++
++  switch (toolName) {
++    case 'Length': {
++      const length = cachedStats?.['1']?.length ?? cachedStats?.length;
++      return length != null ? `${Number(length).toFixed(1)} mm` : '計測中...';
++    }
++    case 'Angle': {
++      const angle = cachedStats?.['1']?.angle ?? cachedStats?.angle;
++      return angle != null ? `${Number(angle).toFixed(1)}°` : '計測中...';
++    }
++    case 'Bidirectional': {
++      const stats = cachedStats?.['1'] ?? cachedStats;
++      const l = stats?.length;
++      const w = stats?.width;
++      if (l != null && w != null) return `${Number(l).toFixed(1)} × ${Number(w).toFixed(1)} mm`;
++      return '計測中...';
++    }
++    case 'ArrowAnnotate': {
++      const text = data.text ?? (data.handles as Record<string, unknown>)?.text ?? '';
++      return String(text) || '(矢印)';
++    }
++    case 'CircleROI':
++    case 'EllipticalROI':
++    case 'RectangleROI':
++    case 'PlanarFreehandROI': {
++      const stats = cachedStats?.['1'] ?? cachedStats;
++      if (!stats) return '計測中...';
++      const area = stats.area;
++      const mean = stats.mean;
++      const parts: string[] = [];
++      if (area != null) parts.push(`${Number(area).toFixed(1)} mm²`);
++      if (mean != null) parts.push(`mean: ${Number(mean).toFixed(1)}`);
++      return parts.length > 0 ? parts.join(', ') : '計測中...';
++    }
++    case 'Probe': {
++      const stats = cachedStats?.['1'] ?? cachedStats;
++      const value = stats?.value ?? stats?.mean;
++      return value != null ? `${Number(value).toFixed(1)} HU` : '計測中...';
++    }
++    default:
++      return '';
++  }
++}
++
++function getAnnotations(): MeasurementItem[] {
++  const items: MeasurementItem[] = [];
++  const mgr = annotation.state;
++
++  for (const toolName of Object.keys(TOOL_LABELS)) {
++    try {
++      const anns = mgr.getAnnotations(toolName) ?? [];
++      for (const ann of anns) {
++        items.push({
++          id: ann.annotationUID ?? '',
++          toolName,
++          label: TOOL_LABELS[toolName] ?? toolName,
++          value: formatAnnotationValue(ann),
++        });
++      }
++    } catch {
++      // Viewport not yet enabled — skip
++    }
++  }
++
++  return items;
++}
++
++// Annotation events from Cornerstone3D Tools
++const ANNOTATION_EVENTS = [
++  csToolsEnums.Events.ANNOTATION_ADDED,
++  csToolsEnums.Events.ANNOTATION_COMPLETED,
++  csToolsEnums.Events.ANNOTATION_MODIFIED,
++  csToolsEnums.Events.ANNOTATION_REMOVED,
++];
++
++export const MeasurementPanel = memo(function MeasurementPanel() {
++  const [items, setItems] = useState<MeasurementItem[]>([]);
++
++  const refresh = useCallback(() => {
++    setItems(getAnnotations());
++  }, []);
++
++  // Event-driven updates + record history for undo/redo
++  useEffect(() => {
++    refresh();
++    const handler = (evt: Event) => {
++      // eslint-disable-next-line @typescript-eslint/no-explicit-any
++      const detail = (evt as any).detail;
++      const uid = detail?.annotation?.annotationUID;
++      if (uid && evt.type === csToolsEnums.Events.ANNOTATION_COMPLETED) {
++        recordAdd(uid);
++      }
++      refresh();
++    };
++    for (const evt of ANNOTATION_EVENTS) {
++      eventTarget.addEventListener(evt, handler);
++    }
++    return () => {
++      for (const evt of ANNOTATION_EVENTS) {
++        eventTarget.removeEventListener(evt, handler);
++      }
++    };
++  }, [refresh]);
++
++  const handleDelete = useCallback((id: string) => {
++    try {
++      recordRemove(id);
++      annotation.state.removeAnnotation(id);
++      refresh();
++    } catch { /* ok */ }
++  }, [refresh]);
++
++  const handleUndo = useCallback(() => {
++    undo();
++    refresh();
++  }, [refresh]);
++
++  const handleRedo = useCallback(() => {
++    redo();
++    refresh();
++  }, [refresh]);
++
++  const handleClearAll = useCallback(() => {
++    try {
++      annotation.state.removeAllAnnotations();
++      setItems([]);
++    } catch { /* ok */ }
++  }, []);
++
++  const handleExportCSV = useCallback(() => {
++    if (items.length === 0) return;
++    const header = '種別,値';
++    const rows = items.map((item) => `"${item.label}","${item.value}"`);
++    const csv = [header, ...rows].join('\n');
++    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
++    const link = document.createElement('a');
++    link.download = `measurements_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
++    link.href = URL.createObjectURL(blob);
++    link.click();
++    URL.revokeObjectURL(link.href);
++  }, [items]);
++
++  return (
++    <div className={styles.panel}>
++      <div className={styles.header}>
++        <span className={styles.title}>計測・アノテーション</span>
++        <span style={{ display: 'flex', gap: 4 }}>
++          <button className={styles.clearButton} onClick={handleUndo} title="元に戻す (Ctrl+Z)">
++            <Undo2 size={10} />
++          </button>
++          <button className={styles.clearButton} onClick={handleRedo} title="やり直し (Ctrl+Y)">
++            <Redo2 size={10} />
++          </button>
++          {items.length > 0 && (
++            <button className={styles.clearButton} onClick={handleExportCSV} title="CSVエクスポート">
++              <Download size={10} /> CSV
++            </button>
++          )}
++          {items.length > 0 && (
++            <button className={styles.clearButton} onClick={handleClearAll} title="全クリア">
++              全クリア
++            </button>
++          )}
++        </span>
++      </div>
++      {items.length === 0 ? (
++        <div className={styles.empty}>計測データなし</div>
++      ) : (
++        <div className={styles.list}>
++          {items.map((item) => (
++            <div key={item.id} className={styles.item}>
++              <div className={styles.itemInfo}>
++                <span className={styles.itemType}>{item.label}</span>
++                <span className={styles.itemValue}>{item.value}</span>
++              </div>
++              <button
++                className={styles.deleteButton}
++                onClick={() => handleDelete(item.id)}
++                title="削除"
++              >
++                <X size={14} />
++              </button>
++            </div>
++          ))}
++        </div>
++      )}
++    </div>
++  );
++});
+diff --git a/src/components/MetadataPanel.module.css b/src/components/MetadataPanel.module.css
+index 2d26f85..79de4eb 100644
+--- a/src/components/MetadataPanel.module.css
++++ b/src/components/MetadataPanel.module.css
+@@ -107,3 +107,35 @@
+ .rowValue.dimmed {
+   color: var(--text-secondary);
+ }
++
++.searchBox {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  padding: 6px 10px;
++  border-bottom: 1px solid var(--border-subtle);
++}
++
++.searchInput {
++  flex: 1;
++  background: var(--bg-surface);
++  border: 1px solid var(--border-subtle);
++  border-radius: 4px;
++  color: var(--text-primary);
++  font-size: var(--font-size-xs);
++  padding: 4px 8px;
++  outline: none;
++}
++
++.searchInput:focus {
++  border-color: var(--accent);
++}
++
++.searchIcon {
++  color: var(--text-disabled);
++  flex-shrink: 0;
++}
++
++.rowHighlight {
++  background: rgba(74, 158, 255, 0.1);
++}
+diff --git a/src/components/MetadataPanel.tsx b/src/components/MetadataPanel.tsx
+index 8300a47..08e2092 100644
+--- a/src/components/MetadataPanel.tsx
++++ b/src/components/MetadataPanel.tsx
+@@ -1,5 +1,5 @@
+-import { useState } from 'react';
+-import { User, FileText, Layers, Image, ChevronRight, FileX } from 'lucide-react';
++import { useState, memo, useMemo } from 'react';
++import { User, FileText, Layers, Image, ChevronRight, FileX, Search } from 'lucide-react';
+ import type { DicomMetadata } from '../types/dicom';
+ import styles from './MetadataPanel.module.css';
+ 
+@@ -40,15 +40,16 @@ interface RowProps {
+   label: string;
+   value: string | number | undefined | null;
+   dimmed?: boolean;
++  highlight?: boolean;
+ }
+ 
+-function Row({ label, value, dimmed = false }: RowProps) {
++function Row({ label, value, dimmed = false, highlight = false }: RowProps) {
+   const displayValue = value !== undefined && value !== null && value !== ''
+     ? String(value)
+     : '—';
+ 
+   return (
+-    <div className={styles.row}>
++    <div className={`${styles.row} ${highlight ? styles.rowHighlight : ''}`}>
+       <span className={styles.rowLabel}>{label}</span>
+       <span className={`${styles.rowValue} ${dimmed ? styles.dimmed : ''}`}>
+         {displayValue}
+@@ -69,7 +70,18 @@ function formatSex(sex: string): string {
+   return sex || '—';
+ }
+ 
+-export function MetadataPanel({ metadata }: MetadataPanelProps) {
++export const MetadataPanel = memo(function MetadataPanel({ metadata }: MetadataPanelProps) {
++  const [search, setSearch] = useState('');
++
++  const match = useMemo(() => {
++    if (!search.trim()) return () => false;
++    const q = search.toLowerCase();
++    return (label: string, value: string | number | undefined | null) => {
++      return label.toLowerCase().includes(q) ||
++        String(value ?? '').toLowerCase().includes(q);
++    };
++  }, [search]);
++
+   if (!metadata) {
+     return (
+       <div className={styles.panel}>
+@@ -82,37 +94,49 @@ export function MetadataPanel({ metadata }: MetadataPanelProps) {
+   }
+ 
+   const { patient, study, series, image } = metadata;
++  const hl = search.trim() ? match : () => false;
+ 
+   return (
+     <div className={styles.panel}>
++      <div className={styles.searchBox}>
++        <Search size={12} className={styles.searchIcon} />
++        <input
++          className={styles.searchInput}
++          type="text"
++          placeholder="タグ検索..."
++          value={search}
++          onChange={(e) => setSearch(e.target.value)}
++        />
++      </div>
++
+       <Section icon={<User size={12} />} title="患者情報">
+-        <Row label="氏名" value={patient.name} />
+-        <Row label="患者ID" value={patient.id} />
+-        <Row label="生年月日" value={formatDate(patient.birthDate)} />
+-        <Row label="性別" value={formatSex(patient.sex)} />
++        <Row label="氏名" value={patient.name} highlight={hl('氏名', patient.name)} />
++        <Row label="患者ID" value={patient.id} highlight={hl('患者ID', patient.id)} />
++        <Row label="生年月日" value={formatDate(patient.birthDate)} highlight={hl('生年月日', patient.birthDate)} />
++        <Row label="性別" value={formatSex(patient.sex)} highlight={hl('性別', patient.sex)} />
+       </Section>
+ 
+       <Section icon={<FileText size={12} />} title="検査情報">
+-        <Row label="検査日" value={formatDate(study.date)} />
+-        <Row label="検査内容" value={study.description} />
+-        <Row label="受付番号" value={study.accessionNumber} />
++        <Row label="検査日" value={formatDate(study.date)} highlight={hl('検査日', study.date)} />
++        <Row label="検査内容" value={study.description} highlight={hl('検査内容', study.description)} />
++        <Row label="受付番号" value={study.accessionNumber} highlight={hl('受付番号', study.accessionNumber)} />
+       </Section>
+ 
+       <Section icon={<Layers size={12} />} title="シリーズ情報">
+-        <Row label="モダリティ" value={series.modality} />
+-        <Row label="説明" value={series.description} />
+-        <Row label="シリーズ番号" value={series.number} />
++        <Row label="モダリティ" value={series.modality} highlight={hl('モダリティ', series.modality)} />
++        <Row label="説明" value={series.description} highlight={hl('説明', series.description)} />
++        <Row label="シリーズ番号" value={series.number} highlight={hl('シリーズ番号', series.number)} />
+       </Section>
+ 
+       <Section icon={<Image size={12} />} title="画像情報">
+-        <Row label="行×列" value={`${image.rows} × ${image.columns}`} />
+-        <Row label="ビット深度" value={`${image.bitsAllocated}bit (${image.bitsStored}stored)`} />
+-        <Row label="WC" value={image.windowCenter} />
+-        <Row label="WW" value={image.windowWidth} />
+-        <Row label="測光解釈" value={image.photometricInterpretation} />
+-        <Row label="転送構文" value={image.transferSyntax} dimmed />
+-        <Row label="SOP UID" value={image.sopInstanceUid} dimmed />
++        <Row label="行×列" value={`${image.rows} × ${image.columns}`} highlight={hl('行×列', `${image.rows} × ${image.columns}`)} />
++        <Row label="ビット深度" value={`${image.bitsAllocated}bit (${image.bitsStored}stored)`} highlight={hl('ビット深度', String(image.bitsAllocated))} />
++        <Row label="WC" value={image.windowCenter} highlight={hl('WC', image.windowCenter)} />
++        <Row label="WW" value={image.windowWidth} highlight={hl('WW', image.windowWidth)} />
++        <Row label="測光解釈" value={image.photometricInterpretation} highlight={hl('測光解釈', image.photometricInterpretation)} />
++        <Row label="転送構文" value={image.transferSyntax} dimmed highlight={hl('転送構文', image.transferSyntax)} />
++        <Row label="SOP UID" value={image.sopInstanceUid} dimmed highlight={hl('SOP UID', image.sopInstanceUid)} />
+       </Section>
+     </div>
+   );
+-}
++});
+diff --git a/src/components/SeriesPanel.tsx b/src/components/SeriesPanel.tsx
+index d28e1ec..4ebb221 100644
+--- a/src/components/SeriesPanel.tsx
++++ b/src/components/SeriesPanel.tsx
+@@ -1,3 +1,4 @@
++import { memo, useRef, useCallback, useEffect, useState } from 'react';
+ import { Layers } from 'lucide-react';
+ import type { SeriesInfo } from '../types/dicom';
+ import styles from './SeriesPanel.module.css';
+@@ -6,14 +7,127 @@ interface SeriesPanelProps {
+   seriesList: SeriesInfo[];
+   activeSeriesIndex: number;
+   activeSliceIndex: number;
++  importanceScores?: number[];
+   onSeriesSelect: (index: number) => void;
+   onSliceSelect: (index: number) => void;
+ }
+ 
+-export function SeriesPanel({
++const ITEM_HEIGHT = 30; // px per slice item
++const OVERSCAN = 10; // extra items above/below viewport
++
++function VirtualSliceList({
++  imageCount,
++  activeSliceIndex,
++  importanceScores,
++  onSliceSelect,
++}: {
++  imageCount: number;
++  activeSliceIndex: number;
++  importanceScores?: number[];
++  onSliceSelect: (index: number) => void;
++}) {
++  const containerRef = useRef<HTMLDivElement>(null);
++  const [scrollTop, setScrollTop] = useState(0);
++  const [containerHeight, setContainerHeight] = useState(400);
++
++  useEffect(() => {
++    const el = containerRef.current;
++    if (!el) return;
++    const obs = new ResizeObserver((entries) => {
++      for (const entry of entries) {
++        setContainerHeight(entry.contentRect.height);
++      }
++    });
++    obs.observe(el);
++    setContainerHeight(el.clientHeight);
++    return () => obs.disconnect();
++  }, []);
++
++  // Auto-scroll to active slice when it changes externally
++  useEffect(() => {
++    const el = containerRef.current;
++    if (!el) return;
++    const itemTop = activeSliceIndex * ITEM_HEIGHT;
++    const itemBottom = itemTop + ITEM_HEIGHT;
++    if (itemTop < el.scrollTop || itemBottom > el.scrollTop + containerHeight) {
++      el.scrollTop = Math.max(0, itemTop - containerHeight / 2);
++    }
++  }, [activeSliceIndex, containerHeight]);
++
++  const handleScroll = useCallback(() => {
++    const el = containerRef.current;
++    if (el) setScrollTop(el.scrollTop);
++  }, []);
++
++  const totalHeight = imageCount * ITEM_HEIGHT;
++  const startIdx = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
++  const endIdx = Math.min(imageCount, Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + OVERSCAN);
++
++  return (
++    <div
++      ref={containerRef}
++      className={styles.sliceList}
++      onScroll={handleScroll}
++    >
++      <div className={styles.sliceListHeader}>スライス ({imageCount})</div>
++      <div style={{ height: totalHeight, position: 'relative' }}>
++        {Array.from({ length: endIdx - startIdx }, (_, i) => {
++          const sliceIdx = startIdx + i;
++          const isActive = sliceIdx === activeSliceIndex;
++          return (
++            <button
++              key={sliceIdx}
++              className={`${styles.sliceItem} ${isActive ? styles.activeSlice : ''}`}
++              onClick={() => onSliceSelect(sliceIdx)}
++              role="option"
++              aria-selected={isActive}
++              title={`スライス ${sliceIdx + 1}`}
++              style={{
++                position: 'absolute',
++                top: sliceIdx * ITEM_HEIGHT,
++                left: 0,
++                right: 0,
++                height: ITEM_HEIGHT,
++              }}
++            >
++              <span className={styles.sliceNumber}>{sliceIdx + 1}</span>
++              {importanceScores && importanceScores[sliceIdx] >= 0 && (
++                <span style={{
++                  flex: 1,
++                  height: 3,
++                  borderRadius: 1,
++                  background: 'var(--border-subtle)',
++                  overflow: 'hidden',
++                }}>
++                  <span style={{
++                    display: 'block',
++                    width: `${Math.round(importanceScores[sliceIdx] * 100)}%`,
++                    height: '100%',
++                    background: importanceScores[sliceIdx] > 0.7
++                      ? 'var(--accent-error, #f44)'
++                      : importanceScores[sliceIdx] > 0.4
++                        ? 'var(--accent, #4a9eff)'
++                        : 'var(--text-disabled)',
++                    borderRadius: 1,
++                  }} />
++                </span>
++              )}
++              {(!importanceScores || importanceScores[sliceIdx] === undefined || importanceScores[sliceIdx] < 0) && (
++                <span className={styles.sliceDot} />
++              )}
++            </button>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
++
++export const SeriesPanel = memo(function SeriesPanel({
+   seriesList,
+   activeSeriesIndex,
+   activeSliceIndex,
++  importanceScores,
+   onSeriesSelect,
+   onSliceSelect,
+ }: SeriesPanelProps) {
+@@ -58,30 +172,15 @@ export function SeriesPanel({
+         })}
+       </div>
+ 
+-      {/* Bottom: slice list for active series */}
+-      <div className={styles.sliceList} role="listbox" aria-label="スライス一覧">
+-        {activeSeries && activeSeries.imageCount > 0 && (
+-          <>
+-            <div className={styles.sliceListHeader}>スライス</div>
+-            {activeSeries.imageIds.map((_, sliceIdx) => {
+-              const isActiveSlice = sliceIdx === activeSliceIndex;
+-              return (
+-                <button
+-                  key={sliceIdx}
+-                  className={`${styles.sliceItem} ${isActiveSlice ? styles.activeSlice : ''}`}
+-                  onClick={() => onSliceSelect(sliceIdx)}
+-                  role="option"
+-                  aria-selected={isActiveSlice}
+-                  title={`スライス ${sliceIdx + 1}`}
+-                >
+-                  <span className={styles.sliceNumber}>{sliceIdx + 1}</span>
+-                  <span className={styles.sliceDot} />
+-                </button>
+-              );
+-            })}
+-          </>
+-        )}
+-      </div>
++      {/* Bottom: virtualized slice list */}
++      {activeSeries && activeSeries.imageCount > 0 && (
++        <VirtualSliceList
++          imageCount={activeSeries.imageCount}
++          activeSliceIndex={activeSliceIndex}
++          importanceScores={importanceScores}
++          onSliceSelect={onSliceSelect}
++        />
++      )}
+     </div>
+   );
+-}
++});
+diff --git a/src/components/Toolbar.tsx b/src/components/Toolbar.tsx
+index c44b427..8422bf0 100644
+--- a/src/components/Toolbar.tsx
++++ b/src/components/Toolbar.tsx
+@@ -2,8 +2,12 @@ import {
+   Sun, ZoomIn, Move, RotateCw, PanelLeft, PanelRight, Maximize,
+   Ruler, Compass, ArrowUpRight, RotateCcw, ChevronLeft, ChevronRight,
+   Square, Grid2X2, Box, Crosshair, SlidersHorizontal,
++  Circle, RectangleHorizontal, Pencil, Target, MoveHorizontal,
++  Columns2, LayoutGrid, Monitor,
++  FlipHorizontal2, FlipVertical2, CircleOff, Play, Pause, Camera, Printer, Wand2, Mic, MicOff,
++  Plus, Minus, Radar, Zap,
+ } from 'lucide-react';
+-import type { ActiveTool, WLPreset, ViewMode, VRPreset } from '../types/dicom';
++import type { ActiveTool, WLPreset, ViewMode, VRPreset, LayoutType } from '../types/dicom';
+ import { WL_PRESETS } from '../types/dicom';
+ import { VR_PRESETS } from '../core/vrPresets';
+ import styles from './Toolbar.module.css';
+@@ -17,8 +21,10 @@ interface ToolbarProps {
+   currentSlice: number;
+   totalSlices: number;
+   viewMode: ViewMode;
++  layout: LayoutType;
+   filterPanelOpen: boolean;
+   hasImages: boolean;
++  cineActive?: boolean;
+   onToolChange: (tool: ActiveTool) => void;
+   onPresetSelect: (preset: WLPreset) => void;
+   onFitToWindow: () => void;
+@@ -27,11 +33,35 @@ interface ToolbarProps {
+   onPrevSlice: () => void;
+   onNextSlice: () => void;
+   onReset: () => void;
++  onFlipH: () => void;
++  onFlipV: () => void;
++  onRotate90: (clockwise: boolean) => void;
++  onInvert: () => void;
++  onToggleCine: () => void;
++  onCineFaster: () => void;
++  onCineSlower: () => void;
++  cineFps?: number;
++  onScreenshot: () => void;
++  onPrint: () => void;
++  onAutoWL: () => void;
++  onToggleVoice: () => void;
++  voiceActive?: boolean;
++  aiScoutEnabled?: boolean;
++  onToggleAiScout: () => void;
++  onNextKeyframe: () => void;
++  smartReadingAvailable?: boolean;
+   onViewModeChange: (mode: ViewMode) => void;
++  onLayoutChange: (layout: LayoutType) => void;
+   onVRPresetSelect: (preset: VRPreset) => void;
+   onToggleFilters: () => void;
+ }
+ 
++const LAYOUT_BUTTONS: { layout: LayoutType; Icon: React.ElementType; title: string }[] = [
++  { layout: '1x1', Icon: Square, title: '1×1 レイアウト' },
++  { layout: '1x2', Icon: Columns2, title: '1×2 レイアウト' },
++  { layout: '2x2', Icon: LayoutGrid, title: '2×2 レイアウト' },
++];
++
+ const NAV_TOOL_BUTTONS: { tool: ActiveTool; Icon: React.ElementType; title: string }[] = [
+   { tool: 'windowLevel', Icon: Sun, title: 'Window/Level (W)' },
+   { tool: 'zoom', Icon: ZoomIn, title: 'Zoom (Z)' },
+@@ -42,11 +72,19 @@ const NAV_TOOL_BUTTONS: { tool: ActiveTool; Icon: React.ElementType; title: stri
+ const MEASURE_TOOL_BUTTONS: { tool: ActiveTool; Icon: React.ElementType; title: string }[] = [
+   { tool: 'length', Icon: Ruler, title: '長さ計測 (L)' },
+   { tool: 'angle', Icon: Compass, title: '角度計測 (A)' },
++  { tool: 'bidirectional', Icon: MoveHorizontal, title: '二方向計測 (B)' },
+   { tool: 'arrowAnnotate', Icon: ArrowUpRight, title: 'アノテーション矢印' },
+ ];
+ 
++const ROI_TOOL_BUTTONS: { tool: ActiveTool; Icon: React.ElementType; title: string }[] = [
++  { tool: 'circleROI', Icon: Circle, title: '円形ROI' },
++  { tool: 'rectangleROI', Icon: RectangleHorizontal, title: '矩形ROI' },
++  { tool: 'freehandROI', Icon: Pencil, title: 'フリーハンドROI' },
++  { tool: 'probe', Icon: Target, title: 'プローブ (ピクセル値)' },
++];
++
+ const VIEW_MODE_BUTTONS: { mode: ViewMode; Icon: React.ElementType; title: string }[] = [
+-  { mode: '2d', Icon: Square, title: '2D表示' },
++  { mode: '2d', Icon: Monitor, title: '2D表示' },
+   { mode: 'mpr', Icon: Grid2X2, title: 'MPR (多断面再構成)' },
+   { mode: '3d-vr', Icon: Box, title: '3D ボリュームレンダリング' },
+ ];
+@@ -60,8 +98,10 @@ export function Toolbar({
+   currentSlice,
+   totalSlices,
+   viewMode,
++  layout,
+   filterPanelOpen,
+   hasImages,
++  cineActive,
+   onToolChange,
+   onPresetSelect,
+   onFitToWindow,
+@@ -70,7 +110,25 @@ export function Toolbar({
+   onPrevSlice,
+   onNextSlice,
+   onReset,
++  onFlipH,
++  onFlipV,
++  onRotate90,
++  onInvert,
++  onToggleCine,
++  onCineFaster,
++  onCineSlower,
++  cineFps,
++  onScreenshot,
++  onPrint,
++  onAutoWL,
++  onToggleVoice,
++  voiceActive,
++  aiScoutEnabled,
++  onToggleAiScout,
++  onNextKeyframe,
++  smartReadingAvailable,
+   onViewModeChange,
++  onLayoutChange,
+   onVRPresetSelect,
+   onToggleFilters,
+ }: ToolbarProps) {
+@@ -124,6 +182,26 @@ export function Toolbar({
+         </>
+       )}
+ 
++      {/* Layout buttons (2D mode only) */}
++      {hasImages && viewMode === '2d' && (
++        <>
++          <div className={styles.group}>
++            {LAYOUT_BUTTONS.map(({ layout: l, Icon, title }) => (
++              <button
++                key={l}
++                className={`${styles.toolButton} ${layout === l ? styles.active : ''}`}
++                onClick={() => onLayoutChange(l)}
++                title={title}
++                aria-pressed={layout === l}
++              >
++                <Icon size={16} />
++              </button>
++            ))}
++          </div>
++          <div className={styles.separator} />
++        </>
++      )}
++
+       {/* Crosshair tool (MPR only) */}
+       {viewMode === 'mpr' && (
+         <>
+@@ -175,19 +253,36 @@ export function Toolbar({
+ 
+       <div className={styles.separator} />
+ 
++      {/* ROI tool buttons */}
++      <div className={styles.group}>
++        {ROI_TOOL_BUTTONS.map(({ tool, Icon, title }) => (
++          <button
++            key={tool}
++            className={`${styles.toolButton} ${activeTool === tool ? styles.active : ''}`}
++            onClick={() => onToolChange(tool)}
++            title={title}
++            aria-pressed={activeTool === tool}
++          >
++            <Icon size={16} />
++          </button>
++        ))}
++      </div>
++
++      <div className={styles.separator} />
++
+       {/* Fit to window + Reset */}
+       <div className={styles.group}>
+         <button
+           className={styles.toolButton}
+           onClick={onFitToWindow}
+-          title="ウィンドウに合わせる"
++          title="ウィンドウに合わせる (F)"
+         >
+           <Maximize size={16} />
+         </button>
+         <button
+           className={styles.toolButton}
+           onClick={onReset}
+-          title="リセット (アノテーション・カメラ)"
++          title="リセット (Esc)"
+         >
+           <RotateCcw size={16} />
+         </button>
+@@ -195,6 +290,73 @@ export function Toolbar({
+ 
+       <div className={styles.separator} />
+ 
++      {/* Image operations */}
++      <div className={styles.group}>
++        <button className={styles.toolButton} onClick={onFlipH} title="左右反転 (H)">
++          <FlipHorizontal2 size={16} />
++        </button>
++        <button className={styles.toolButton} onClick={onFlipV} title="上下反転 (V)">
++          <FlipVertical2 size={16} />
++        </button>
++        <button className={styles.toolButton} onClick={() => onRotate90(false)} title="90°左回転 (,)">
++          <RotateCcw size={16} />
++        </button>
++        <button className={styles.toolButton} onClick={() => onRotate90(true)} title="90°右回転 (.)">
++          <RotateCw size={16} />
++        </button>
++        <button className={styles.toolButton} onClick={onInvert} title="ネガ反転 (I)">
++          <CircleOff size={16} />
++        </button>
++        {totalSlices > 1 && (
++          <>
++            <button
++              className={`${styles.toolButton} ${cineActive ? styles.active : ''}`}
++              onClick={onToggleCine}
++              title="Cine再生/停止 (Space)"
++            >
++              {cineActive ? <Pause size={16} /> : <Play size={16} />}
++            </button>
++            {cineActive && (
++              <>
++                <button className={styles.toolButton} onClick={onCineSlower} title="速度ダウン (-)">
++                  <Minus size={14} />
++                </button>
++                <span style={{ fontSize: 10, color: 'var(--text-secondary)', minWidth: 30, textAlign: 'center' }}>{cineFps}fps</span>
++                <button className={styles.toolButton} onClick={onCineFaster} title="速度アップ (+)">
++                  <Plus size={14} />
++                </button>
++              </>
++            )}
++          </>
++        )}
++        <button className={styles.toolButton} onClick={onScreenshot} title="スクリーンショット (S)">
++          <Camera size={16} />
++        </button>
++        <button className={styles.toolButton} onClick={onPrint} title="印刷">
++          <Printer size={16} />
++        </button>
++        {/* Voice command: experimental, hidden from default toolbar.
++            Activate via keyboard shortcut or API only. */}
++        <button
++          className={`${styles.toolButton} ${aiScoutEnabled ? styles.active : ''}`}
++          onClick={onToggleAiScout}
++          title={aiScoutEnabled ? '変化マップ OFF' : '変化マップ — 前スライスとの差分表示'}
++        >
++          <Radar size={16} />
++        </button>
++        {smartReadingAvailable && (
++          <button
++            className={styles.toolButton}
++            onClick={onNextKeyframe}
++            title="次の注目スライス (Smart Reading)"
++          >
++            <Zap size={16} />
++          </button>
++        )}
++      </div>
++
++      <div className={styles.separator} />
++
+       {/* WL/WW display */}
+       <div className={styles.group}>
+         <div className={styles.voiDisplay}>
+@@ -207,8 +369,11 @@ export function Toolbar({
+ 
+       <div className={styles.separator} />
+ 
+-      {/* Preset selector */}
++      {/* Preset selector + Auto WL */}
+       <div className={styles.group}>
++        <button className={styles.toolButton} onClick={onAutoWL} title="Auto WL/WW (Wasm最適化)">
++          <Wand2 size={16} />
++        </button>
+         <select
+           className={styles.presetSelect}
+           onChange={handlePresetChange}
+diff --git a/src/components/Viewport.module.css b/src/components/Viewport.module.css
+index 6ba05d7..4c1b962 100644
+--- a/src/components/Viewport.module.css
++++ b/src/components/Viewport.module.css
+@@ -42,3 +42,88 @@
+   z-index: 4;
+   letter-spacing: 0.03em;
+ }
++
++/* DICOM info overlay — four corners */
++.infoOverlay {
++  position: absolute;
++  pointer-events: none;
++  z-index: 4;
++  font-size: 11px;
++  line-height: 1.5;
++  color: rgba(224, 224, 232, 0.85);
++  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
++  font-family: var(--font-mono);
++  letter-spacing: 0.02em;
++}
++
++.aiScoutPanel {
++  position: absolute;
++  top: 8px;
++  right: 10px;
++  z-index: 6;
++  pointer-events: none;
++  font-size: 10px;
++  color: rgba(224, 224, 232, 0.9);
++  background: rgba(0, 0, 0, 0.75);
++  border: 1px solid rgba(0, 255, 136, 0.35);
++  border-radius: 6px;
++  padding: 8px 12px;
++  max-width: 200px;
++  line-height: 1.5;
++  backdrop-filter: blur(4px);
++}
++
++.aiScoutTitle {
++  font-weight: 700;
++  font-size: 11px;
++  color: #00ff88;
++  margin-bottom: 4px;
++  letter-spacing: 0.03em;
++}
++
++.aiScoutDesc {
++  color: rgba(224, 224, 232, 0.65);
++  margin-bottom: 6px;
++}
++
++.aiScoutLegend {
++  display: flex;
++  flex-direction: column;
++  gap: 3px;
++}
++
++.aiScoutLegendRow {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++}
++
++.aiScoutLegendColor {
++  width: 14px;
++  height: 8px;
++  border-radius: 2px;
++  flex-shrink: 0;
++}
++
++.aiScoutLegendLabel {
++  color: rgba(224, 224, 232, 0.7);
++}
++
++.heatmapOverlay {
++  position: absolute;
++  top: 0;
++  left: 0;
++  width: 100%;
++  height: 100%;
++  pointer-events: none;
++  z-index: 2;
++  opacity: 0.55;
++  mix-blend-mode: screen;
++  image-rendering: pixelated;
++  object-fit: contain;
++}
++
++.infoTopLeft { top: 8px; left: 10px; }
++.infoTopRight { top: 8px; right: 10px; text-align: right; }
++.infoBottomLeft { bottom: 8px; left: 10px; }
++.infoBottomRight { bottom: 8px; right: 10px; text-align: right; }
+diff --git a/src/components/Viewport.tsx b/src/components/Viewport.tsx
+index 7e8d06d..c778f17 100644
+--- a/src/components/Viewport.tsx
++++ b/src/components/Viewport.tsx
+@@ -1,11 +1,11 @@
+-import { useEffect, useRef } from 'react';
++import { useEffect, useRef, useCallback } from 'react';
+ import { RenderingEngine, Enums } from '@cornerstonejs/core';
+ import type { Types } from '@cornerstonejs/core';
+ import { utilities } from '@cornerstonejs/tools';
+ import { AlertCircle } from 'lucide-react';
+ import { createToolGroup } from '../core/toolSetup';
+-import { applyFilterU8, isWasmReady } from '../core/wasmBridge';
+-import type { FilterState } from '../types/dicom';
++import { applyFilterU8, isWasmReady, computeChangeMap } from '../core/wasmBridge';
++import type { FilterState, DicomMetadata } from '../types/dicom';
+ import styles from './Viewport.module.css';
+ 
+ export const VIEWPORT_ID = 'dicomViewport';
+@@ -14,6 +14,10 @@ export const RENDERING_ENGINE_ID = 'dicomRenderingEngine';
+ interface ViewportProps {
+   imageIds: string[];
+   activeFilters?: FilterState[];
++  metadata?: DicomMetadata | null;
++  windowCenter?: number;
++  windowWidth?: number;
++  aiScoutEnabled?: boolean;
+   onVoiChange?: (windowCenter: number, windowWidth: number) => void;
+   onImageRendered?: (imageId: string) => void;
+   onImageLoadFailed?: (errorMessage: string) => void;
+@@ -79,9 +83,25 @@ function hideOverlay(overlayCanvas: HTMLCanvasElement): void {
+   overlayCanvas.style.display = 'none';
+ }
+ 
++function formatDate(raw: unknown): string {
++  if (!raw) return '';
++  // Handle {year, month, day} object format from Cornerstone
++  if (typeof raw === 'object' && raw !== null && 'year' in raw) {
++    const d = raw as { year: number; month: number; day: number };
++    return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
++  }
++  const s = String(raw);
++  if (s.length === 8) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
++  return s;
++}
++
+ export function Viewport({
+   imageIds,
+   activeFilters,
++  metadata,
++  windowCenter,
++  windowWidth,
++  aiScoutEnabled,
+   onVoiChange,
+   onImageRendered,
+   onImageLoadFailed,
+@@ -90,11 +110,99 @@ export function Viewport({
+ }: ViewportProps) {
+   const divRef = useRef<HTMLDivElement>(null);
+   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
++  const heatmapCanvasRef = useRef<HTMLCanvasElement>(null);
++  const prevGrayscaleRef = useRef<Uint8Array | null>(null);
+   const engineRef = useRef<RenderingEngine | null>(null);
+   const currentSliceRef = useRef<number>(0);
+   const sliceChangeTimerRef = useRef<number>(0);
+   const initTimerRef = useRef<number>(0);
+ 
++  const aiScoutRef = useRef(aiScoutEnabled);
++  aiScoutRef.current = aiScoutEnabled;
++
++  // Change map: shows what changed from the previous slice
++  const renderChangeMap = useCallback((_viewportElement: HTMLDivElement, heatmapCanvas: HTMLCanvasElement) => {
++    if (!aiScoutRef.current || !isWasmReady()) {
++      heatmapCanvas.style.display = 'none';
++      return;
++    }
++
++    const eng = engineRef.current;
++    if (!eng) return;
++    const vp = eng.getStackViewport(VIEWPORT_ID);
++    if (!vp) return;
++    const vpCanvas = vp.getCanvas();
++    if (!vpCanvas) return;
++    const w = vpCanvas.width;
++    const h = vpCanvas.height;
++    if (w === 0 || h === 0) return;
++
++    // Read current pixels via offscreen canvas (works with WebGL)
++    let grayscale: Uint8Array;
++    try {
++      const offscreen = document.createElement('canvas');
++      offscreen.width = w;
++      offscreen.height = h;
++      const offCtx = offscreen.getContext('2d');
++      if (!offCtx) return;
++      offCtx.drawImage(vpCanvas, 0, 0);
++      const imageData = offCtx.getImageData(0, 0, w, h);
++      const rgba = imageData.data;
++      const pixels = w * h;
++      grayscale = new Uint8Array(pixels);
++      for (let i = 0; i < pixels; i++) grayscale[i] = rgba[i * 4];
++    } catch { return; }
++
++    const prev = prevGrayscaleRef.current;
++    prevGrayscaleRef.current = grayscale;
++
++    // Need previous slice to compute change
++    if (!prev || prev.length !== grayscale.length) {
++      heatmapCanvas.style.display = 'none';
++      return;
++    }
++
++    const t0 = performance.now();
++    let changeData: Uint8Array;
++    try {
++      changeData = computeChangeMap(grayscale, prev, w, h);
++    } catch { return; }
++    const elapsed = (performance.now() - t0).toFixed(1);
++
++    const blockSize = 16;
++    const bw = Math.ceil(w / blockSize);
++    const bh = Math.ceil(h / blockSize);
++
++    let changeCount = 0;
++    for (let i = 0; i < changeData.length; i++) {
++      if (changeData[i] > 30) changeCount++;
++    }
++    console.log(`[Change Map] ${bw}×${bh} blocks, ${changeCount} changed, ${elapsed}ms`);
++
++    heatmapCanvas.width = w;
++    heatmapCanvas.height = h;
++
++    const ctx = heatmapCanvas.getContext('2d');
++    if (!ctx) return;
++    ctx.clearRect(0, 0, w, h);
++
++    for (let by = 0; by < bh; by++) {
++      for (let bx = 0; bx < bw; bx++) {
++        const score = changeData[by * bw + bx];
++        if (score < 25) continue; // Skip minor changes
++        const t = score / 255;
++        // Cyan → Yellow → Red for change intensity
++        const r = Math.round(t > 0.5 ? 255 : t * 2 * 255);
++        const g = Math.round(t < 0.5 ? 200 + t * 110 : (1 - t) * 2 * 255);
++        const b = Math.round(t < 0.3 ? (1 - t * 3) * 200 : 0);
++        const alpha = 0.2 + t * 0.5;
++        ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
++        ctx.fillRect(bx * blockSize, by * blockSize, blockSize, blockSize);
++      }
++    }
++    heatmapCanvas.style.display = changeCount > 0 ? 'block' : 'none';
++  }, []);
++
+   const onImageRenderedRef = useRef(onImageRendered);
+   onImageRenderedRef.current = onImageRendered;
+   const onImageLoadFailedRef = useRef(onImageLoadFailed);
+@@ -167,6 +275,16 @@ export function Viewport({
+         } else if (overlay) {
+           hideOverlay(overlay);
+         }
++
++        // Slice change map
++        const hmc = heatmapCanvasRef.current;
++        if (hmc) {
++          if (aiScoutRef.current && isWasmReady()) {
++            renderChangeMap(element, hmc);
++          } else {
++            hmc.style.display = 'none';
++          }
++        }
+       };
+ 
+       element.addEventListener(Enums.Events.IMAGE_RENDERED, handleRendered);
+@@ -180,7 +298,7 @@ export function Viewport({
+             currentSliceRef.current = 0;
+             vp.render();
+             utilities.stackPrefetch.setConfiguration({
+-              maxImagesToPrefetch: Math.min(ids.length, 50),
++              maxImagesToPrefetch: Math.min(ids.length, 10),
+               preserveExistingPool: false,
+             });
+             utilities.stackPrefetch.enable(element);
+@@ -248,7 +366,52 @@ export function Viewport({
+     <div className={styles.container}>
+       <div ref={divRef} className={styles.viewport} tabIndex={-1} />
+       <canvas ref={overlayCanvasRef} className={styles.filterOverlay} style={{ display: 'none' }} />
+-      {imageIds.length > 1 && (
++      <canvas ref={heatmapCanvasRef} className={styles.heatmapOverlay} style={{ display: 'none' }} />
++      {aiScoutEnabled && (
++        <div className={styles.aiScoutPanel}>
++          <div className={styles.aiScoutTitle}>Slice Change Map</div>
++          <div className={styles.aiScoutDesc}>前のスライスから変化した領域をハイライト（スクロールして確認）</div>
++          <div className={styles.aiScoutLegend}>
++            <div className={styles.aiScoutLegendRow}>
++              <span className={styles.aiScoutLegendColor} style={{ background: 'rgba(255,80,50,0.8)' }} />
++              <span className={styles.aiScoutLegendLabel}>大 — 大きな構造変化</span>
++            </div>
++            <div className={styles.aiScoutLegendRow}>
++              <span className={styles.aiScoutLegendColor} style={{ background: 'rgba(255,220,0,0.6)' }} />
++              <span className={styles.aiScoutLegendLabel}>中 — 中程度の変化</span>
++            </div>
++            <div className={styles.aiScoutLegendRow}>
++              <span className={styles.aiScoutLegendColor} style={{ background: 'rgba(0,200,200,0.4)' }} />
++              <span className={styles.aiScoutLegendLabel}>小 — 軽微な変化</span>
++            </div>
++          </div>
++        </div>
++      )}
++      {/* DICOM info overlay — four corners */}
++      {metadata && (
++        <>
++          <div className={`${styles.infoOverlay} ${styles.infoTopLeft}`}>
++            <div>{metadata.patient.name}</div>
++            <div>{metadata.patient.id}</div>
++            <div>{metadata.patient.sex}{metadata.patient.birthDate ? ` / ${formatDate(metadata.patient.birthDate)}` : ''}</div>
++          </div>
++          <div className={`${styles.infoOverlay} ${styles.infoTopRight}`}>
++            <div>{metadata.series.modality}</div>
++            <div>{metadata.series.description}</div>
++            <div>{formatDate(metadata.study.date)}</div>
++          </div>
++          <div className={`${styles.infoOverlay} ${styles.infoBottomLeft}`}>
++            {imageIds.length > 1 && <div>Im: {currentSliceRef.current + 1} / {imageIds.length}</div>}
++            <div>{metadata.image.rows} × {metadata.image.columns}</div>
++          </div>
++          <div className={`${styles.infoOverlay} ${styles.infoBottomRight}`}>
++            {windowCenter != null && windowWidth != null && (
++              <div>WC: {Math.round(windowCenter)} / WW: {Math.round(windowWidth)}</div>
++            )}
++          </div>
++        </>
++      )}
++      {!metadata && imageIds.length > 1 && (
+         <div className={styles.sliceOverlay}>
+           {currentSliceRef.current + 1} / {imageIds.length}
+         </div>
+diff --git a/src/components/ViewportGrid.tsx b/src/components/ViewportGrid.tsx
+index 2b2d632..788e79f 100644
+--- a/src/components/ViewportGrid.tsx
++++ b/src/components/ViewportGrid.tsx
+@@ -3,10 +3,15 @@ import { RenderingEngine, Enums, volumeLoader, setVolumesForViewports, cache, im
+ import type { Types } from '@cornerstonejs/core';
+ import { createMprToolGroup, destroyMprToolGroup } from '../core/toolSetup';
+ import type { VRPreset } from '../types/dicom';
++import { getGPUCapabilities } from '../hooks/useCornerstone';
++import { getRecommendedMaxSlices } from '../core/gpuDetect';
+ import styles from './ViewportGrid.module.css';
+ 
+ const MPR_ENGINE_ID = 'mprRenderingEngine';
+-const MAX_SLICES = 512;
++// Small series: use all slices for full diagnostic quality
++// Large series: downsample to limit memory (~128 × 512 × 512 × 4 = 128MB)
++const FULL_QUALITY_THRESHOLD = 300;
++const MAX_SLICES_LARGE = 128;
+ 
+ const VP = {
+   axial: 'mprAxial',
+@@ -97,11 +102,16 @@ export function ViewportGrid({ imageIds, seriesUid, mode, activeVRPreset }: View
+ 
+         if (destroyed) return;
+ 
+-        // 3. Pre-load images to populate metadata (required for volume creation)
+-        const sliceIds = downsample(imageIds, MAX_SLICES);
++        // 3. Pre-load images in small batches to register metadata,
++        //    then immediately free pixel data to avoid double memory.
++        const gpuCaps = getGPUCapabilities();
++        const gpuMaxSlices = gpuCaps ? getRecommendedMaxSlices(gpuCaps) : MAX_SLICES_LARGE;
++        const maxSlices = imageIds.length <= FULL_QUALITY_THRESHOLD
++          ? imageIds.length
++          : gpuMaxSlices;
++        const sliceIds = downsample(imageIds, maxSlices);
+ 
+-        // Load images in parallel batches to populate metadata
+-        const PRELOAD_BATCH = 30;
++        const PRELOAD_BATCH = 20;
+         for (let i = 0; i < sliceIds.length; i += PRELOAD_BATCH) {
+           if (destroyed) return;
+           const batch = sliceIds.slice(i, i + PRELOAD_BATCH);
+@@ -110,11 +120,16 @@ export function ViewportGrid({ imageIds, seriesUid, mode, activeVRPreset }: View
+               imageLoader.loadAndCacheImage(id).catch(() => null),
+             ),
+           );
++          // Free pixel data immediately — metadata stays in the provider
++          for (const id of batch) {
++            try { cache.removeImageLoadObject(id); } catch { /* ok */ }
++          }
+         }
+ 
+         if (destroyed) return;
+ 
+-        // 4. Create volume with downsampled imageIds (unique ID per mount)
++        // 4. Create volume — metadata is registered, volume loader will
++        //    re-decode pixels one-by-one into its own Float32Array.
+         const volumeId = `cornerstoneStreamingImageVolume:mpr_${seriesUid}_${Date.now()}`;
+         volumeIdRef.current = volumeId;
+ 
+@@ -124,7 +139,6 @@ export function ViewportGrid({ imageIds, seriesUid, mode, activeVRPreset }: View
+ 
+         if (destroyed) return;
+ 
+-        // 4. Load volume data and wait for completion
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         (volume as any).load();
+ 
+diff --git a/src/components/ViewportLayout.module.css b/src/components/ViewportLayout.module.css
+new file mode 100644
+index 0000000..9d7f76f
+--- /dev/null
++++ b/src/components/ViewportLayout.module.css
+@@ -0,0 +1,41 @@
++.grid {
++  display: grid;
++  width: 100%;
++  height: 100%;
++  gap: 2px;
++  background: var(--bg-deepest);
++}
++
++.grid1x1 { grid-template: 1fr / 1fr; }
++.grid1x2 { grid-template: 1fr / 1fr 1fr; }
++.grid2x2 { grid-template: 1fr 1fr / 1fr 1fr; }
++
++.cell {
++  position: relative;
++  overflow: hidden;
++  border: 1px solid transparent;
++  transition: border-color 0.15s;
++}
++
++.cellActive {
++  border-color: var(--accent);
++}
++
++.cellLabel {
++  position: absolute;
++  top: 6px;
++  left: 8px;
++  font-size: var(--font-size-xs);
++  color: rgba(224, 224, 232, 0.6);
++  z-index: 4;
++  pointer-events: none;
++}
++
++.emptyCell {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  color: var(--text-secondary);
++  font-size: var(--font-size-sm);
++  background: var(--bg-panel);
++}
+diff --git a/src/components/ViewportLayout.tsx b/src/components/ViewportLayout.tsx
+new file mode 100644
+index 0000000..b99ce1e
+--- /dev/null
++++ b/src/components/ViewportLayout.tsx
+@@ -0,0 +1,208 @@
++import { useEffect, useRef, useCallback } from 'react';
++import { RenderingEngine, Enums } from '@cornerstonejs/core';
++import type { Types } from '@cornerstonejs/core';
++import { utilities } from '@cornerstonejs/tools';
++import { createToolGroup } from '../core/toolSetup';
++import { applyFilterU8, isWasmReady } from '../core/wasmBridge';
++import type { LayoutType, FilterState, SeriesInfo } from '../types/dicom';
++import styles from './ViewportLayout.module.css';
++
++const LAYOUT_ENGINE_ID = 'layoutRenderingEngine';
++
++interface CellState {
++  viewportId: string;
++  imageIds: string[];
++  seriesIndex: number;
++  currentSlice: number;
++}
++
++interface ViewportLayoutProps {
++  layout: LayoutType;
++  seriesList: SeriesInfo[];
++  activeFilters?: FilterState[];
++  onVoiChange?: (wc: number, ww: number) => void;
++  onImageRendered?: (imageId: string) => void;
++  onSliceChange?: (currentIndex: number, totalSlices: number) => void;
++}
++
++function getCellCount(layout: LayoutType): number {
++  switch (layout) {
++    case '1x1': return 1;
++    case '1x2': return 2;
++    case '2x2': return 4;
++  }
++}
++
++function getGridClass(layout: LayoutType): string {
++  switch (layout) {
++    case '1x1': return styles.grid1x1;
++    case '1x2': return styles.grid1x2;
++    case '2x2': return styles.grid2x2;
++  }
++}
++
++export function ViewportLayout({
++  layout,
++  seriesList,
++  activeFilters,
++  onVoiChange,
++  onImageRendered,
++  onSliceChange,
++}: ViewportLayoutProps) {
++  const cellCount = getCellCount(layout);
++  const cellRefs = useRef<(HTMLDivElement | null)[]>([]);
++  const engineRef = useRef<RenderingEngine | null>(null);
++  const activeIndexRef = useRef(0);
++  const cellStatesRef = useRef<CellState[]>([]);
++
++  const onVoiChangeRef = useRef(onVoiChange);
++  onVoiChangeRef.current = onVoiChange;
++  const onImageRenderedRef = useRef(onImageRendered);
++  onImageRenderedRef.current = onImageRendered;
++  const onSliceChangeRef = useRef(onSliceChange);
++  onSliceChangeRef.current = onSliceChange;
++
++  // Initialize cells — assign series round-robin
++  useEffect(() => {
++    const states: CellState[] = [];
++    for (let i = 0; i < cellCount; i++) {
++      const seriesIdx = i < seriesList.length ? i : 0;
++      const series = seriesList[seriesIdx];
++      states.push({
++        viewportId: `layoutVp_${i}`,
++        imageIds: series?.imageIds ?? [],
++        seriesIndex: seriesIdx,
++        currentSlice: 0,
++      });
++    }
++    cellStatesRef.current = states;
++  }, [cellCount, seriesList]);
++
++  // Create rendering engine and viewports
++  useEffect(() => {
++    const elements = cellRefs.current.slice(0, cellCount);
++    if (elements.some((el) => !el)) return;
++
++    const initTimer = window.setTimeout(() => {
++      const engine = new RenderingEngine(LAYOUT_ENGINE_ID);
++      engineRef.current = engine;
++
++      const inputs: Types.PublicViewportInput[] = cellStatesRef.current.map((cell, i) => ({
++        viewportId: cell.viewportId,
++        type: Enums.ViewportType.STACK,
++        element: elements[i]!,
++      }));
++      engine.setViewports(inputs);
++
++      // Create tool group for all viewports
++      for (const cell of cellStatesRef.current) {
++        createToolGroup(cell.viewportId, LAYOUT_ENGINE_ID);
++      }
++
++      // Load images into each viewport
++      for (const cell of cellStatesRef.current) {
++        if (cell.imageIds.length === 0) continue;
++        const vp = engine.getStackViewport(cell.viewportId);
++        if (!vp) continue;
++        vp.setStack(cell.imageIds, 0).then(() => {
++          vp.render();
++          const el = vp.element;
++          if (el) {
++            utilities.stackPrefetch.setConfiguration({
++              maxImagesToPrefetch: Math.min(cell.imageIds.length, 10),
++              preserveExistingPool: false,
++            });
++            utilities.stackPrefetch.enable(el);
++          }
++        }).catch(console.error);
++      }
++
++      // Event handler for active viewport
++      for (let i = 0; i < elements.length; i++) {
++        const el = elements[i]!;
++        const handler = () => {
++          const eng = engineRef.current;
++          if (!eng) return;
++          const vpId = cellStatesRef.current[i]?.viewportId;
++          if (!vpId) return;
++          const vp = eng.getStackViewport(vpId);
++          if (!vp) return;
++
++          const currentImageId = vp.getCurrentImageId();
++          if (currentImageId && onImageRenderedRef.current && i === activeIndexRef.current) {
++            onImageRenderedRef.current(currentImageId);
++          }
++
++          if (i === activeIndexRef.current) {
++            try {
++              const voiRange = vp.getProperties().voiRange;
++              if (voiRange && onVoiChangeRef.current) {
++                const ww = voiRange.upper - voiRange.lower;
++                const wc = voiRange.lower + ww / 2;
++                onVoiChangeRef.current(wc, ww);
++              }
++            } catch { /* ok */ }
++
++            const idx = vp.getCurrentImageIdIndex();
++            const total = vp.getImageIds().length;
++            if (onSliceChangeRef.current) onSliceChangeRef.current(idx, total);
++          }
++        };
++        el.addEventListener(Enums.Events.IMAGE_RENDERED, handler);
++        (el as unknown as Record<string, unknown>).__layoutHandler = handler;
++      }
++    }, 100);
++
++    return () => {
++      clearTimeout(initTimer);
++      for (const el of elements) {
++        if (!el) continue;
++        // eslint-disable-next-line @typescript-eslint/no-explicit-any
++        const handler = (el as any).__layoutHandler;
++        if (handler) {
++          el.removeEventListener(Enums.Events.IMAGE_RENDERED, handler);
++        }
++        try { utilities.stackPrefetch.disable(el); } catch { /* ok */ }
++      }
++      const engine = engineRef.current;
++      if (engine) {
++        engineRef.current = null;
++        engine.destroy();
++      }
++    };
++  }, [layout, seriesList]); // eslint-disable-line react-hooks/exhaustive-deps
++
++  const handleCellClick = useCallback((index: number) => {
++    activeIndexRef.current = index;
++  }, []);
++
++  return (
++    <div className={`${styles.grid} ${getGridClass(layout)}`}>
++      {Array.from({ length: cellCount }, (_, i) => {
++        const series = seriesList[i < seriesList.length ? i : 0];
++        const label = series
++          ? `${series.modality} - ${series.seriesDescription || `Series ${series.seriesNumber}`}`
++          : '';
++
++        return (
++          <div
++            key={i}
++            className={`${styles.cell} ${activeIndexRef.current === i ? styles.cellActive : ''}`}
++            onClick={() => handleCellClick(i)}
++          >
++            {label && <span className={styles.cellLabel}>{label}</span>}
++            {series ? (
++              <div
++                ref={(el) => { cellRefs.current[i] = el; }}
++                style={{ width: '100%', height: '100%', outline: 'none' }}
++                tabIndex={-1}
++              />
++            ) : (
++              <div className={styles.emptyCell}>シリーズなし</div>
++            )}
++          </div>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/src/core/annotationHistory.ts b/src/core/annotationHistory.ts
+new file mode 100644
+index 0000000..1f1c355
+--- /dev/null
++++ b/src/core/annotationHistory.ts
+@@ -0,0 +1,85 @@
++import { annotation } from '@cornerstonejs/tools';
++
++interface HistoryEntry {
++  type: 'add' | 'remove';
++  annotationUID: string;
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
++  snapshot: any; // serialized annotation
++}
++
++const MAX_HISTORY = 50;
++const undoStack: HistoryEntry[] = [];
++const redoStack: HistoryEntry[] = [];
++
++function cloneAnnotation(uid: string) {
++  const mgr = annotation.state;
++  // Search across all tool types
++  const toolNames = [
++    'Length', 'Angle', 'Bidirectional', 'ArrowAnnotate',
++    'CircleROI', 'EllipticalROI', 'RectangleROI', 'PlanarFreehandROI', 'Probe',
++  ];
++  for (const toolName of toolNames) {
++    try {
++      const anns = mgr.getAnnotations(toolName) ?? [];
++      const found = anns.find((a) => a.annotationUID === uid);
++      if (found) return JSON.parse(JSON.stringify(found));
++    } catch { /* skip */ }
++  }
++  return null;
++}
++
++/** Record an annotation addition for undo */
++export function recordAdd(uid: string): void {
++  const snap = cloneAnnotation(uid);
++  if (!snap) return;
++  undoStack.push({ type: 'add', annotationUID: uid, snapshot: snap });
++  if (undoStack.length > MAX_HISTORY) undoStack.shift();
++  redoStack.length = 0;
++}
++
++/** Record an annotation removal for undo */
++export function recordRemove(uid: string): void {
++  const snap = cloneAnnotation(uid);
++  if (!snap) return;
++  undoStack.push({ type: 'remove', annotationUID: uid, snapshot: snap });
++  if (undoStack.length > MAX_HISTORY) undoStack.shift();
++  redoStack.length = 0;
++}
++
++/** Undo the last operation */
++export function undo(): boolean {
++  const entry = undoStack.pop();
++  if (!entry) return false;
++
++  if (entry.type === 'add') {
++    // Was added → remove it
++    try { annotation.state.removeAnnotation(entry.annotationUID); } catch { /* ok */ }
++    redoStack.push(entry);
++  } else {
++    // Was removed → re-add it
++    try { annotation.state.addAnnotation(entry.snapshot); } catch { /* ok */ }
++    redoStack.push(entry);
++  }
++  return true;
++}
++
++/** Redo the last undone operation */
++export function redo(): boolean {
++  const entry = redoStack.pop();
++  if (!entry) return false;
++
++  if (entry.type === 'add') {
++    // Was added, undone (removed) → re-add
++    try { annotation.state.addAnnotation(entry.snapshot); } catch { /* ok */ }
++    undoStack.push(entry);
++  } else {
++    // Was removed, undone (re-added) → remove again
++    try { annotation.state.removeAnnotation(entry.annotationUID); } catch { /* ok */ }
++    undoStack.push(entry);
++  }
++  return true;
++}
++
++export function canUndo(): boolean { return undoStack.length > 0; }
++export function canRedo(): boolean { return redoStack.length > 0; }
++export function clearHistory(): void { undoStack.length = 0; redoStack.length = 0; }
+diff --git a/src/core/cornerstoneSetup.ts b/src/core/cornerstoneSetup.ts
+index 587eb20..df1325b 100644
+--- a/src/core/cornerstoneSetup.ts
++++ b/src/core/cornerstoneSetup.ts
+@@ -2,6 +2,8 @@ import {
+   init as coreInit,
+   volumeLoader,
+   cache,
++  Enums,
++  eventTarget,
+   cornerstoneStreamingImageVolumeLoader,
+ } from '@cornerstonejs/core';
+ import { init as dicomImageLoaderInit } from '@cornerstonejs/dicom-image-loader';
+@@ -10,9 +12,42 @@ import { init as cornerstoneToolsInit } from '@cornerstonejs/tools';
+ // Use window flag to survive HMR module reloads
+ const INIT_KEY = '__cornerstoneInitialized__';
+ 
+-// Max cache size: 512MB (prevents runaway memory usage)
++// Max cache size: 512MB — with auto-purge, we can be more generous
+ const MAX_CACHE_SIZE_BYTES = 512 * 1024 * 1024;
+ 
++// Purge threshold: when cache exceeds this ratio, purge oldest images
++const PURGE_THRESHOLD = 0.9;
++const PURGE_TARGET = 0.6;
++
++function setupCacheAutoPurge(): void {
++  // Listen for cache full events and purge old images
++  const checkAndPurge = () => {
++    const used = cache.getCacheSize();
++    const max = cache.getMaxCacheSize();
++    if (used > max * PURGE_THRESHOLD) {
++      // Purge down to target
++      const targetBytes = max * PURGE_TARGET;
++      const bytesToFree = used - targetBytes;
++      if (bytesToFree > 0) {
++        try {
++          cache.purgeCache();
++          console.log(`[Cache] Auto-purged: ${(used / 1024 / 1024).toFixed(0)}MB → ${(cache.getCacheSize() / 1024 / 1024).toFixed(0)}MB`);
++        } catch { /* ok */ }
++      }
++    }
++  };
++
++  // Check periodically during scrolling
++  let purgeTimer = 0;
++  eventTarget.addEventListener(Enums.Events.IMAGE_LOADED, () => {
++    if (purgeTimer) return;
++    purgeTimer = window.setTimeout(() => {
++      purgeTimer = 0;
++      checkAndPurge();
++    }, 500);
++  });
++}
++
+ export async function initCornerstone(): Promise<void> {
+   if ((window as unknown as Record<string, unknown>)[INIT_KEY]) return;
+ 
+@@ -23,6 +58,9 @@ export async function initCornerstone(): Promise<void> {
+   // Set cache size limit
+   cache.setMaxCacheSize(MAX_CACHE_SIZE_BYTES);
+ 
++  // Setup auto-purge to prevent CACHE_SIZE_EXCEEDED errors
++  setupCacheAutoPurge();
++
+   // Register the streaming volume loader for 3D/MPR support
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   volumeLoader.registerVolumeLoader(
+diff --git a/src/core/gpuDetect.ts b/src/core/gpuDetect.ts
+new file mode 100644
+index 0000000..0340921
+--- /dev/null
++++ b/src/core/gpuDetect.ts
+@@ -0,0 +1,76 @@
++/**
++ * GPU capability detection for optimal rendering path selection.
++ * Checks WebGPU → WebGL2 → WebGL fallback chain.
++ */
++
++export type GPUBackend = 'webgpu' | 'webgl2' | 'webgl';
++
++export interface GPUCapabilities {
++  backend: GPUBackend;
++  maxTextureSize: number;
++  maxContexts: number;
++  vendor: string;
++  renderer: string;
++  webgpuAvailable: boolean;
++}
++
++/** Check if WebGPU is available */
++async function checkWebGPU(): Promise<boolean> {
++  if (!('gpu' in navigator)) return false;
++  try {
++    const adapter = await navigator.gpu.requestAdapter();
++    return adapter !== null;
++  } catch {
++    return false;
++  }
++}
++
++/** Get WebGL info */
++function getWebGLInfo(): { vendor: string; renderer: string; maxTextureSize: number; version: 'webgl2' | 'webgl' } | null {
++  const canvas = document.createElement('canvas');
++
++  // Try WebGL2 first
++  let gl = canvas.getContext('webgl2') as WebGL2RenderingContext | null;
++  let version: 'webgl2' | 'webgl' = 'webgl2';
++  if (!gl) {
++    gl = canvas.getContext('webgl') as WebGLRenderingContext | null;
++    version = 'webgl';
++  }
++  if (!gl) return null;
++
++  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
++  const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'unknown';
++  const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
++  const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
++
++  // Clean up
++  const ext = gl.getExtension('WEBGL_lose_context');
++  if (ext) ext.loseContext();
++
++  return { vendor, renderer, maxTextureSize, version };
++}
++
++/** Detect GPU capabilities and optimal rendering backend */
++export async function detectGPU(): Promise<GPUCapabilities> {
++  const webgpuAvailable = await checkWebGPU();
++  const glInfo = getWebGLInfo();
++
++  const backend: GPUBackend = webgpuAvailable ? 'webgpu' : (glInfo?.version ?? 'webgl');
++
++  return {
++    backend,
++    maxTextureSize: glInfo?.maxTextureSize ?? 4096,
++    maxContexts: backend === 'webgpu' ? 32 : 16,
++    vendor: glInfo?.vendor ?? 'unknown',
++    renderer: glInfo?.renderer ?? 'unknown',
++    webgpuAvailable,
++  };
++}
++
++/** Get recommended max volume slices based on GPU capabilities */
++export function getRecommendedMaxSlices(caps: GPUCapabilities): number {
++  if (caps.webgpuAvailable) return 512; // WebGPU handles more data
++  if (caps.maxTextureSize >= 8192) return 256;
++  if (caps.maxTextureSize >= 4096) return 128;
++  return 64;
++}
+diff --git a/src/core/toolSetup.ts b/src/core/toolSetup.ts
+index 4b494e5..1bc99c2 100644
+--- a/src/core/toolSetup.ts
++++ b/src/core/toolSetup.ts
+@@ -9,6 +9,12 @@ import {
+   LengthTool,
+   AngleTool,
+   ArrowAnnotateTool,
++  CircleROITool,
++  EllipticalROITool,
++  RectangleROITool,
++  PlanarFreehandROITool,
++  ProbeTool,
++  BidirectionalTool,
+   CrosshairsTool,
+   VolumeRotateTool,
+   Enums as csToolsEnums,
+@@ -30,6 +36,12 @@ export function setupTools(): void {
+   addTool(LengthTool);
+   addTool(AngleTool);
+   addTool(ArrowAnnotateTool);
++  addTool(CircleROITool);
++  addTool(EllipticalROITool);
++  addTool(RectangleROITool);
++  addTool(PlanarFreehandROITool);
++  addTool(ProbeTool);
++  addTool(BidirectionalTool);
+   addTool(CrosshairsTool);
+   addTool(VolumeRotateTool);
+ 
+@@ -57,6 +69,12 @@ export function createToolGroup(
+   toolGroup.addTool(LengthTool.toolName);
+   toolGroup.addTool(AngleTool.toolName);
+   toolGroup.addTool(ArrowAnnotateTool.toolName);
++  toolGroup.addTool(CircleROITool.toolName);
++  toolGroup.addTool(EllipticalROITool.toolName);
++  toolGroup.addTool(RectangleROITool.toolName);
++  toolGroup.addTool(PlanarFreehandROITool.toolName);
++  toolGroup.addTool(ProbeTool.toolName);
++  toolGroup.addTool(BidirectionalTool.toolName);
+ 
+   toolGroup.addViewport(viewportId, renderingEngineId);
+ 
+@@ -70,10 +88,13 @@ export function createToolGroup(
+   toolGroup.setToolActive(ZoomTool.toolName, {
+     bindings: [{ mouseButton: csToolsEnums.MouseBindings.Secondary }],
+   });
+-  // Mouse wheel for stack scroll (StackScrollTool replaces StackScrollMouseWheelTool in v4.x)
++  // Mouse wheel for stack scroll — disable debounce to prevent scroll-back on unloaded images
+   toolGroup.setToolActive(StackScrollTool.toolName, {
+     bindings: [{ mouseButton: csToolsEnums.MouseBindings.Wheel }],
+   });
++  toolGroup.setToolConfiguration(StackScrollTool.toolName, {
++    debounceIfNotLoaded: false,
++  });
+ }
+ 
+ export function createMprToolGroup(
+@@ -114,6 +135,9 @@ export function createMprToolGroup(
+   toolGroup.setToolActive(StackScrollTool.toolName, {
+     bindings: [{ mouseButton: csToolsEnums.MouseBindings.Wheel }],
+   });
++  toolGroup.setToolConfiguration(StackScrollTool.toolName, {
++    debounceIfNotLoaded: false,
++  });
+ }
+ 
+ export function destroyMprToolGroup(): void {
+@@ -138,6 +162,12 @@ export function setActiveTool(toolName: string): void {
+     LengthTool.toolName,
+     AngleTool.toolName,
+     ArrowAnnotateTool.toolName,
++    CircleROITool.toolName,
++    EllipticalROITool.toolName,
++    RectangleROITool.toolName,
++    PlanarFreehandROITool.toolName,
++    ProbeTool.toolName,
++    BidirectionalTool.toolName,
+     CrosshairsTool.toolName,
+   ];
+ 
+diff --git a/src/core/voiceCommand.ts b/src/core/voiceCommand.ts
+new file mode 100644
+index 0000000..e362b32
+--- /dev/null
++++ b/src/core/voiceCommand.ts
+@@ -0,0 +1,105 @@
++/**
++ * Voice command system using Web Speech API.
++ * Enables hands-free operation for clinical environments.
++ */
++
++export interface VoiceCommandHandler {
++  onCommand: (command: string) => void;
++}
++
++// Japanese + English command mapping
++const COMMAND_MAP: Record<string, string> = {
++  // Navigation
++  '次': 'next', 'つぎ': 'next', 'next': 'next',
++  '前': 'prev', 'まえ': 'prev', 'previous': 'prev', 'back': 'prev',
++  // Tools
++  'ズーム': 'zoom', 'zoom': 'zoom', 'ずーむ': 'zoom',
++  'パン': 'pan', 'pan': 'pan', 'ぱん': 'pan',
++  '回転': 'rotate', 'かいてん': 'rotate', 'rotate': 'rotate',
++  'ウィンドウ': 'windowLevel', 'window': 'windowLevel',
++  '計測': 'length', 'けいそく': 'length', 'measure': 'length',
++  '角度': 'angle', 'かくど': 'angle', 'angle': 'angle',
++  // Actions
++  'リセット': 'reset', 'りせっと': 'reset', 'reset': 'reset',
++  'フィット': 'fit', 'ふぃっと': 'fit', 'fit': 'fit',
++  '反転': 'invert', 'はんてん': 'invert', 'invert': 'invert',
++  '左右': 'flipH', 'さゆう': 'flipH', 'flip': 'flipH',
++  '上下': 'flipV', 'じょうげ': 'flipV',
++  'スクリーンショット': 'screenshot', 'screenshot': 'screenshot', 'キャプチャ': 'screenshot',
++  '印刷': 'print', 'いんさつ': 'print', 'print': 'print',
++  '再生': 'cine', 'さいせい': 'cine', 'play': 'cine',
++  '停止': 'cineStop', 'ていし': 'cineStop', 'stop': 'cineStop',
++  // Auto
++  'オート': 'autoWL', 'おーと': 'autoWL', 'auto': 'autoWL',
++};
++
++let recognition: SpeechRecognition | null = null;
++let isListening = false;
++let commandHandler: VoiceCommandHandler | null = null;
++
++export function isVoiceSupported(): boolean {
++  return 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
++}
++
++export function isVoiceActive(): boolean {
++  return isListening;
++}
++
++export function startVoiceRecognition(handler: VoiceCommandHandler): boolean {
++  if (!isVoiceSupported()) return false;
++  if (isListening) return true;
++
++  const SpeechRecognition = window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition;
++  recognition = new SpeechRecognition();
++  recognition.continuous = true;
++  recognition.interimResults = false;
++  recognition.lang = 'ja-JP';
++  commandHandler = handler;
++
++  recognition.onresult = (event: SpeechRecognitionEvent) => {
++    const last = event.results[event.results.length - 1];
++    if (!last.isFinal) return;
++    const transcript = last[0].transcript.trim().toLowerCase();
++    console.log(`[Voice] heard: "${transcript}"`);
++
++    // Find matching command
++    for (const [key, cmd] of Object.entries(COMMAND_MAP)) {
++      if (transcript.includes(key)) {
++        console.log(`[Voice] command: ${cmd}`);
++        commandHandler?.onCommand(cmd);
++        return;
++      }
++    }
++  };
++
++  recognition.onerror = (event) => {
++    console.warn('[Voice] error:', event.error);
++    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
++      isListening = false;
++    }
++  };
++
++  recognition.onend = () => {
++    // Auto-restart if still active
++    if (isListening && recognition) {
++      try { recognition.start(); } catch { /* ok */ }
++    }
++  };
++
++  try {
++    recognition.start();
++    isListening = true;
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++export function stopVoiceRecognition(): void {
++  isListening = false;
++  if (recognition) {
++    try { recognition.stop(); } catch { /* ok */ }
++    recognition = null;
++  }
++  commandHandler = null;
++}
+diff --git a/src/core/volumeLoader.ts b/src/core/volumeLoader.ts
+index cab947f..4330e51 100644
+--- a/src/core/volumeLoader.ts
++++ b/src/core/volumeLoader.ts
+@@ -8,8 +8,9 @@ export function getVolumeId(seriesInstanceUid: string): string {
+   return `${VOLUME_SCHEME}:${seriesInstanceUid}`;
+ }
+ 
+-// WebGL 3D texture max slices — conservative to avoid GPU memory issues
+-const MAX_VOLUME_SLICES = 512;
++// Small series use all slices; large series downsample to save memory
++const FULL_QUALITY_THRESHOLD = 300;
++const MAX_VOLUME_SLICES = 128;
+ 
+ /**
+  * Downsample imageIds by taking every N-th slice to fit within GPU limits.
+@@ -44,13 +45,16 @@ export async function loadVolume(series: SeriesInfo): Promise<string> {
+     return volumeId;
+   }
+ 
+-  // Downsample if too many slices for WebGL 3D texture
++  // Small series: full quality. Large series: downsample to save memory.
+   let imageIds = series.imageIds;
+-  if (imageIds.length > MAX_VOLUME_SLICES) {
++  const maxSlices = imageIds.length <= FULL_QUALITY_THRESHOLD
++    ? imageIds.length
++    : MAX_VOLUME_SLICES;
++  if (imageIds.length > maxSlices) {
+     console.warn(
+-      `Series has ${imageIds.length} slices, downsampling to ${MAX_VOLUME_SLICES} for volume rendering`,
++      `Series has ${imageIds.length} slices, downsampling to ${maxSlices} for volume rendering`,
+     );
+-    imageIds = downsampleImageIds(imageIds, MAX_VOLUME_SLICES);
++    imageIds = downsampleImageIds(imageIds, maxSlices);
+   }
+ 
+   try {
+diff --git a/src/core/wasmBridge.ts b/src/core/wasmBridge.ts
+index 17b144e..34b4508 100644
+--- a/src/core/wasmBridge.ts
++++ b/src/core/wasmBridge.ts
+@@ -92,3 +92,68 @@ export function computeHistogram(pixelData: Uint8Array): Uint32Array {
+   if (!wasmModule) throw new Error('Wasm not initialized');
+   return wasmModule.compute_pixel_histogram(pixelData);
+ }
++
++// ─── Slice Analysis ───
++
++/**
++ * Compute change map between current and previous slice.
++ * Returns downscaled u8 heatmap (width/16 × height/16).
++ * Higher values = more change between adjacent slices.
++ */
++export function computeChangeMap(current: Uint8Array, previous: Uint8Array, width: number, height: number): Uint8Array {
++  if (!wasmModule) throw new Error('Wasm not initialized');
++  return wasmModule.compute_change_map(current, previous, width, height);
++}
++
++/**
++ * Compute importance score for a single slice (0.0-1.0).
++ */
++export function computeSliceImportance(pixelData: Uint8Array, width: number, height: number): number {
++  if (!wasmModule) throw new Error('Wasm not initialized');
++  return wasmModule.compute_slice_importance(pixelData, width, height);
++}
++
++/**
++ * Compute importance score from a full-res slice, downsampling to 128×128 internally.
++ */
++export function computeSliceImportanceDownsampled(pixelData: Uint8Array, width: number, height: number): number {
++  if (!wasmModule) throw new Error('Wasm not initialized');
++  return wasmModule.compute_slice_importance_downsampled(pixelData, width, height);
++}
++
++/**
++ * Compute change score between two slices (0.0-1.0).
++ */
++export function computeSliceChange(current: Uint8Array, previous: Uint8Array, width: number, height: number): number {
++  if (!wasmModule) throw new Error('Wasm not initialized');
++  return wasmModule.compute_slice_change(current, previous, width, height);
++}
++
++/**
++ * Compute difference map between two 8-bit images.
++ * Returns scaled absolute difference (0=same, 255=max difference).
++ */
++export function computeDiffMap(a: Uint8Array, b: Uint8Array): Uint8Array {
++  if (!wasmModule) throw new Error('Wasm not initialized');
++  return wasmModule.compute_diff_map(a, b);
++}
++
++/**
++ * Compute optimal Window Center / Window Width from 8-bit pixel data
++ * using Wasm percentile analysis (1st-99th percentile).
++ * Returns { windowCenter, windowWidth }.
++ */
++export function autoWindowLevelU8(pixelData: Uint8Array): { windowCenter: number; windowWidth: number } {
++  if (!wasmModule) throw new Error('Wasm not initialized');
++  const result: Float64Array = wasmModule.auto_window_level_u8(pixelData);
++  return { windowCenter: result[0], windowWidth: result[1] };
++}
++
++/**
++ * Compute optimal WL/WW from 16-bit pixel data using Wasm.
++ */
++export function autoWindowLevelI16(pixelData: Int16Array): { windowCenter: number; windowWidth: number } {
++  if (!wasmModule) throw new Error('Wasm not initialized');
++  const result: Float64Array = wasmModule.auto_window_level(pixelData);
++  return { windowCenter: result[0], windowWidth: result[1] };
++}
+diff --git a/src/hooks/useCornerstone.ts b/src/hooks/useCornerstone.ts
+index 0d8cf9b..a9986fa 100644
+--- a/src/hooks/useCornerstone.ts
++++ b/src/hooks/useCornerstone.ts
+@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
+ import { initCornerstone } from '../core/cornerstoneSetup';
+ import { setupTools } from '../core/toolSetup';
+ import { initWasm } from '../core/wasmBridge';
++import { detectGPU, type GPUCapabilities } from '../core/gpuDetect';
++
++// Expose GPU capabilities globally for volume loader to use
++let gpuCaps: GPUCapabilities | null = null;
++export function getGPUCapabilities(): GPUCapabilities | null { return gpuCaps; }
+ 
+ export function useCornerstone(): { ready: boolean; error: string | null } {
+   const [ready, setReady] = useState(false);
+@@ -12,6 +17,14 @@ export function useCornerstone(): { ready: boolean; error: string | null } {
+ 
+     async function init() {
+       try {
++        // Detect GPU capabilities first
++        try {
++          gpuCaps = await detectGPU();
++          console.log(`GPU: ${gpuCaps.backend} | ${gpuCaps.renderer} | maxTexture: ${gpuCaps.maxTextureSize} | WebGPU: ${gpuCaps.webgpuAvailable}`);
++        } catch (err) {
++          console.warn('GPU detection failed:', err);
++        }
++
+         await initCornerstone();
+         setupTools();
+ 
+diff --git a/src/types/dicom.ts b/src/types/dicom.ts
+index d647dc4..fde9936 100644
+--- a/src/types/dicom.ts
++++ b/src/types/dicom.ts
+@@ -50,8 +50,23 @@ export const WL_PRESETS: WLPreset[] = [
+   { label: '腹部', windowCenter: 60, windowWidth: 400 },
+ ];
+ 
++/** Modality-specific default WL/WW presets — applied automatically on series load */
++export const MODALITY_PRESETS: Record<string, WLPreset> = {
++  CT: { label: '軟部組織', windowCenter: 40, windowWidth: 400 },
++  MR: { label: 'MR Default', windowCenter: 600, windowWidth: 1200 },
++  CR: { label: 'CR Default', windowCenter: 2048, windowWidth: 4096 },
++  DX: { label: 'DX Default', windowCenter: 2048, windowWidth: 4096 },
++  XA: { label: 'XA Default', windowCenter: 1024, windowWidth: 2048 },
++  MG: { label: 'MG Default', windowCenter: 3000, windowWidth: 6000 },
++  US: { label: 'US Default', windowCenter: 128, windowWidth: 256 },
++  PT: { label: 'PET Default', windowCenter: 5000, windowWidth: 10000 },
++  NM: { label: 'NM Default', windowCenter: 128, windowWidth: 256 },
++};
++
+ export type ViewMode = '2d' | 'mpr' | '3d-vr';
+ 
++export type LayoutType = '1x1' | '1x2' | '2x2';
++
+ export type FilterType = 'sobel' | 'laplacian' | 'sharpen' | 'denoise' | 'invert' | 'histogramEq';
+ 
+ export interface FilterParams {
+@@ -85,6 +100,8 @@ export interface VolumeInfo {
+ export type ActiveTool =
+   | 'windowLevel' | 'zoom' | 'pan' | 'rotate'
+   | 'length' | 'angle' | 'arrowAnnotate'
++  | 'circleROI' | 'ellipticalROI' | 'rectangleROI' | 'freehandROI'
++  | 'probe' | 'bidirectional'
+   | 'crosshairs';
+ 
+ export interface SeriesInfo {
+diff --git a/wasm/src/ai_scout.rs b/wasm/src/ai_scout.rs
+new file mode 100644
+index 0000000..b2e6527
+--- /dev/null
++++ b/wasm/src/ai_scout.rs
+@@ -0,0 +1,167 @@
++/// Slice Change Map: Highlights regions that differ from the previous slice.
++/// Clinically meaningful — shows where anatomy changes between adjacent slices,
++/// useful for detecting lesion boundaries and new findings.
++
++const BLOCK_SIZE: usize = 16;
++
++/// Compute a change map between two 8-bit grayscale images of the same size.
++/// Returns a downscaled heatmap (width/BLOCK_SIZE × height/BLOCK_SIZE) as u8 scores.
++/// Higher values = more change between the two slices.
++pub fn compute_change_map(
++    current: &[u8],
++    previous: &[u8],
++    width: usize,
++    height: usize,
++) -> Vec<u8> {
++    let pixels = width * height;
++    if pixels == 0 || current.len() < pixels || previous.len() < pixels {
++        return vec![];
++    }
++
++    let bw = (width + BLOCK_SIZE - 1) / BLOCK_SIZE;
++    let bh = (height + BLOCK_SIZE - 1) / BLOCK_SIZE;
++    let num_blocks = bw * bh;
++
++    // Per-block: mean absolute difference
++    let mut block_diffs = vec![0.0f32; num_blocks];
++
++    for by in 0..bh {
++        for bx in 0..bw {
++            let idx = by * bw + bx;
++            let x0 = bx * BLOCK_SIZE;
++            let y0 = by * BLOCK_SIZE;
++            let x1 = (x0 + BLOCK_SIZE).min(width);
++            let y1 = (y0 + BLOCK_SIZE).min(height);
++            let block_pixels = (y1 - y0) * (x1 - x0);
++            if block_pixels == 0 { continue; }
++
++            let mut diff_sum: u32 = 0;
++            for y in y0..y1 {
++                for x in x0..x1 {
++                    let pi = y * width + x;
++                    let d = (current[pi] as i32 - previous[pi] as i32).unsigned_abs();
++                    diff_sum += d;
++                }
++            }
++            block_diffs[idx] = diff_sum as f32 / block_pixels as f32;
++        }
++    }
++
++    // Normalize to 0-255 using percentile (ignore top 1% as outlier)
++    let mut sorted_diffs: Vec<f32> = block_diffs.iter()
++        .filter(|d| **d > 0.5) // ignore near-zero blocks
++        .copied()
++        .collect();
++
++    if sorted_diffs.is_empty() {
++        return vec![0u8; num_blocks];
++    }
++
++    sorted_diffs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
++    let p99_idx = ((sorted_diffs.len() as f32 * 0.99) as usize).min(sorted_diffs.len() - 1);
++    let max_diff = sorted_diffs[p99_idx].max(1.0);
++
++    let mut heatmap = vec![0u8; num_blocks];
++    for i in 0..num_blocks {
++        if block_diffs[i] < 1.0 { continue; } // Skip negligible change
++        let normalized = (block_diffs[i] / max_diff).min(1.0);
++        heatmap[i] = (normalized * 255.0) as u8;
++    }
++
++    heatmap
++}
++
++/// Compute importance score for a single slice (0.0 - 1.0).
++/// Based on entropy + edge density. Uses raw pixel data.
++pub fn compute_slice_importance(data: &[u8], width: usize, height: usize) -> f32 {
++    if width == 0 || height == 0 || data.len() < width * height {
++        return 0.0;
++    }
++
++    let total = width * height;
++
++    // Entropy from histogram
++    let mut hist = [0u32; 256];
++    for i in 0..total {
++        hist[data[i] as usize] += 1;
++    }
++    let mut entropy: f32 = 0.0;
++    let total_f = total as f32;
++    for &count in &hist {
++        if count > 0 {
++            let p = count as f32 / total_f;
++            entropy -= p * p.log2();
++        }
++    }
++
++    // Edge density (sampled gradient)
++    let step = if total > 100_000 { 4 } else { 2 };
++    let mut edge_sum: f32 = 0.0;
++    let mut edge_count: u32 = 0;
++    for y in (1..height - 1).step_by(step) {
++        for x in (1..width - 1).step_by(step) {
++            let gx = data[y * width + x + 1] as i32 - data[y * width + x - 1] as i32;
++            let gy = data[(y + 1) * width + x] as i32 - data[(y - 1) * width + x] as i32;
++            edge_sum += ((gx * gx + gy * gy) as f32).sqrt();
++            edge_count += 1;
++        }
++    }
++    let edge_density = if edge_count > 0 { edge_sum / edge_count as f32 } else { 0.0 };
++
++    // Combine: entropy (0-8 range) + edge density (0-~360 range)
++    let entropy_norm = (entropy / 8.0).min(1.0);
++    let edge_norm = (edge_density / 100.0).min(1.0);
++
++    entropy_norm * 0.5 + edge_norm * 0.5
++}
++
++/// Downsample 8-bit grayscale to target size using area averaging.
++/// Used to compute importance scores without loading full-res images.
++pub fn downsample_u8(data: &[u8], src_w: usize, src_h: usize, dst_w: usize, dst_h: usize) -> Vec<u8> {
++    let mut out = vec![0u8; dst_w * dst_h];
++    let sx = src_w as f32 / dst_w as f32;
++    let sy = src_h as f32 / dst_h as f32;
++
++    for dy in 0..dst_h {
++        for dx in 0..dst_w {
++            let x0 = (dx as f32 * sx) as usize;
++            let y0 = (dy as f32 * sy) as usize;
++            let x1 = ((dx + 1) as f32 * sx) as usize;
++            let y1 = ((dy + 1) as f32 * sy) as usize;
++            let x1 = x1.min(src_w);
++            let y1 = y1.min(src_h);
++            let mut sum: u32 = 0;
++            let mut count: u32 = 0;
++            for y in y0..y1 {
++                for x in x0..x1 {
++                    sum += data[y * src_w + x] as u32;
++                    count += 1;
++                }
++            }
++            out[dy * dst_w + dx] = if count > 0 { (sum / count) as u8 } else { 0 };
++        }
++    }
++    out
++}
++
++/// Compute change score between two slices (0.0 - 1.0).
++/// Simple and reliable: mean absolute difference normalized.
++pub fn compute_slice_change_score(current: &[u8], previous: &[u8], width: usize, height: usize) -> f32 {
++    let pixels = width * height;
++    if pixels == 0 || current.len() < pixels || previous.len() < pixels {
++        return 0.0;
++    }
++
++    // Sample for speed
++    let step = if pixels > 100_000 { 4 } else { 1 };
++    let mut diff_sum: u64 = 0;
++    let mut count: u32 = 0;
++    for i in (0..pixels).step_by(step) {
++        diff_sum += (current[i] as i32 - previous[i] as i32).unsigned_abs() as u64;
++        count += 1;
++    }
++
++    let mean_diff = diff_sum as f32 / count.max(1) as f32;
++    // Normalize: typical range 0-30, cap at 50
++    (mean_diff / 50.0).min(1.0)
++}
+diff --git a/wasm/src/histogram.rs b/wasm/src/histogram.rs
+index f5264b1..5440d7a 100644
+--- a/wasm/src/histogram.rs
++++ b/wasm/src/histogram.rs
+@@ -8,6 +8,93 @@ pub fn compute_histogram(data: &[u8]) -> [u32; 256] {
+     hist
+ }
+ 
++/// Compute optimal Window Center / Window Width from 16-bit pixel data
++/// using percentile-based analysis (excludes outliers at 1st/99th percentile).
++/// Returns (window_center, window_width).
++pub fn auto_window_level_i16(data: &[i16]) -> (f64, f64) {
++    if data.is_empty() {
++        return (0.0, 1.0);
++    }
++
++    let len = data.len();
++
++    // Build sorted sample for percentile calculation
++    // For large images, sample every N-th pixel for speed
++    let sample_step = if len > 100_000 { len / 50_000 } else { 1 };
++    let mut samples: Vec<i16> = data.iter().step_by(sample_step).copied().collect();
++    samples.sort_unstable();
++
++    let n = samples.len();
++    // 1st and 99th percentile indices
++    let p1_idx = (n as f64 * 0.01) as usize;
++    let p99_idx = ((n as f64 * 0.99) as usize).min(n - 1);
++
++    let p1 = samples[p1_idx] as f64;
++    let p99 = samples[p99_idx] as f64;
++
++    let ww = (p99 - p1).max(1.0);
++    let wc = p1 + ww / 2.0;
++
++    (wc, ww)
++}
++
++/// Compute optimal WL/WW from 8-bit pixel data (canvas grayscale).
++pub fn auto_window_level_u8(data: &[u8]) -> (f64, f64) {
++    if data.is_empty() {
++        return (128.0, 256.0);
++    }
++
++    // Use histogram for fast percentile computation
++    let hist = compute_histogram(data);
++    let total = data.len() as f64;
++    let p1_target = (total * 0.01) as u32;
++    let p99_target = (total * 0.99) as u32;
++
++    let mut cumulative = 0u32;
++    let mut p1: f64 = 0.0;
++    let mut p99: f64 = 255.0;
++
++    for (i, &count) in hist.iter().enumerate() {
++        cumulative += count;
++        if cumulative >= p1_target && p1 == 0.0 && i > 0 {
++            p1 = i as f64;
++        }
++        if cumulative >= p99_target {
++            p99 = i as f64;
++            break;
++        }
++    }
++
++    let ww = (p99 - p1).max(1.0);
++    let wc = p1 + ww / 2.0;
++
++    (wc, ww)
++}
++
++/// Compute absolute difference between two 8-bit images.
++/// Output is scaled to full 0-255 range for visibility.
++pub fn compute_diff_map(a: &[u8], b: &[u8]) -> Vec<u8> {
++    let len = a.len().min(b.len());
++    let mut diff = vec![0u8; len];
++
++    // First pass: find max diff
++    let mut max_diff: u8 = 0;
++    for i in 0..len {
++        let d = (a[i] as i16 - b[i] as i16).unsigned_abs() as u8;
++        diff[i] = d;
++        if d > max_diff { max_diff = d; }
++    }
++
++    // Second pass: scale to 0-255
++    if max_diff > 0 {
++        for d in &mut diff {
++            *d = ((*d as u16 * 255) / max_diff as u16) as u8;
++        }
++    }
++
++    diff
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/wasm/src/lib.rs b/wasm/src/lib.rs
+index 8d648ea..a095f1c 100644
+--- a/wasm/src/lib.rs
++++ b/wasm/src/lib.rs
+@@ -1,6 +1,7 @@
+ mod pixel;
+ mod filters;
+ mod histogram;
++mod ai_scout;
+ 
+ use wasm_bindgen::prelude::*;
+ use js_sys::{Int16Array, Uint8Array, Uint32Array};
+@@ -134,3 +135,74 @@ pub fn compute_pixel_histogram(data: &Uint8Array) -> Uint32Array {
+     result.copy_from(&hist);
+     result
+ }
++
++/// Compute optimal Window Center and Window Width from 16-bit pixel data.
++/// Uses percentile analysis (1st-99th) to exclude outliers.
++/// Returns [window_center, window_width] as Float64Array.
++#[wasm_bindgen]
++pub fn auto_window_level(data: &Int16Array) -> js_sys::Float64Array {
++    let input: Vec<i16> = data.to_vec();
++    let (wc, ww) = histogram::auto_window_level_i16(&input);
++    let result = js_sys::Float64Array::new_with_length(2);
++    result.copy_from(&[wc, ww]);
++    result
++}
++
++/// Compute change map between current and previous slice (8-bit grayscale).
++/// Returns downscaled heatmap (width/16 × height/16) as u8 change scores.
++#[wasm_bindgen]
++pub fn compute_change_map(current: &Uint8Array, previous: &Uint8Array, width: u32, height: u32) -> Uint8Array {
++    let cur: Vec<u8> = current.to_vec();
++    let prev: Vec<u8> = previous.to_vec();
++    let heatmap = ai_scout::compute_change_map(&cur, &prev, width as usize, height as usize);
++    let result = Uint8Array::new_with_length(heatmap.len() as u32);
++    result.copy_from(&heatmap);
++    result
++}
++
++/// Compute importance score for a single slice (0.0-1.0).
++#[wasm_bindgen]
++pub fn compute_slice_importance(data: &Uint8Array, width: u32, height: u32) -> f64 {
++    let input: Vec<u8> = data.to_vec();
++    ai_scout::compute_slice_importance(&input, width as usize, height as usize) as f64
++}
++
++/// Compute change score between two slices (0.0-1.0).
++#[wasm_bindgen]
++pub fn compute_slice_change(current: &Uint8Array, previous: &Uint8Array, width: u32, height: u32) -> f64 {
++    let cur: Vec<u8> = current.to_vec();
++    let prev: Vec<u8> = previous.to_vec();
++    ai_scout::compute_slice_change_score(&cur, &prev, width as usize, height as usize) as f64
++}
++
++/// Compute importance score from a full-res slice, downsampling internally to 128×128.
++/// This allows computing scores without keeping full-res data in JS memory.
++#[wasm_bindgen]
++pub fn compute_slice_importance_downsampled(data: &Uint8Array, width: u32, height: u32) -> f64 {
++    let input: Vec<u8> = data.to_vec();
++    let ds = ai_scout::downsample_u8(&input, width as usize, height as usize, 128, 128);
++    ai_scout::compute_slice_importance(&ds, 128, 128) as f64
++}
++
++/// Compute difference map between two 8-bit images.
++/// Returns scaled absolute difference (0-255).
++#[wasm_bindgen]
++pub fn compute_diff_map(a: &Uint8Array, b: &Uint8Array) -> Uint8Array {
++    let a_vec: Vec<u8> = a.to_vec();
++    let b_vec: Vec<u8> = b.to_vec();
++    let diff = histogram::compute_diff_map(&a_vec, &b_vec);
++    let result = Uint8Array::new_with_length(diff.len() as u32);
++    result.copy_from(&diff);
++    result
++}
++
++/// Compute optimal WL/WW from 8-bit pixel data (canvas grayscale).
++/// Returns [window_center, window_width] as Float64Array.
++#[wasm_bindgen]
++pub fn auto_window_level_u8(data: &Uint8Array) -> js_sys::Float64Array {
++    let input: Vec<u8> = data.to_vec();
++    let (wc, ww) = histogram::auto_window_level_u8(&input);
++    let result = js_sys::Float64Array::new_with_length(2);
++    result.copy_from(&[wc, ww]);
++    result
++}
