@@ -58,9 +58,15 @@ function Row({ label, value, dimmed = false, highlight = false }: RowProps) {
   );
 }
 
-function formatDate(raw: string): string {
-  if (!raw || raw.length !== 8) return raw || '—';
-  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+function formatDate(raw: unknown): string {
+  if (!raw) return '—';
+  if (typeof raw === 'object' && raw !== null && 'year' in raw) {
+    const d = raw as { year: number; month: number; day: number };
+    return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+  }
+  if (typeof raw !== 'string') return String(raw);
+  if (raw.length === 8) return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  return raw || '—';
 }
 
 function formatSex(sex: string): string {
@@ -78,7 +84,7 @@ export const MetadataPanel = memo(function MetadataPanel({ metadata }: MetadataP
   // Determine if a label/value pair matches the search
   const matches = useMemo(() => {
     if (!lowerSearch || !metadata) return () => false;
-    return (label: string, value: string | number | undefined | null): boolean => {
+    return (label: string, value: unknown): boolean => {
       const v = value !== undefined && value !== null ? String(value) : '';
       return (
         label.toLowerCase().includes(lowerSearch) ||

@@ -23,9 +23,16 @@ interface ViewportProps {
   aiScoutEnabled?: boolean;
 }
 
-function formatDate(raw: string): string {
-  if (!raw || raw.length !== 8) return raw || '';
-  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+function formatDate(raw: unknown): string {
+  if (!raw) return '';
+  // Cornerstone3D may return { year, month, day } object
+  if (typeof raw === 'object' && raw !== null && 'year' in raw) {
+    const d = raw as { year: number; month: number; day: number };
+    return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+  }
+  if (typeof raw !== 'string') return String(raw);
+  if (raw.length === 8) return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  return raw;
 }
 
 // Map a 0-255 change value to a cyan-yellow-red color gradient
