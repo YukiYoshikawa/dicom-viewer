@@ -1,4 +1,9 @@
 mod pixel;
+mod histogram;
+mod ai_scout;
+
+pub use histogram::*;
+pub use ai_scout::*;
 
 use wasm_bindgen::prelude::*;
 use js_sys::{Int16Array, Uint8Array};
