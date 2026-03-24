@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { getRenderingEngine, metaData } from '@cornerstonejs/core';
 import { annotation } from '@cornerstonejs/tools';
 import { useCornerstone } from './hooks/useCornerstone';
@@ -7,12 +7,15 @@ import { Toolbar } from './components/Toolbar';
 import { Viewport, VIEWPORT_ID, RENDERING_ENGINE_ID } from './components/Viewport';
 import { DropZone } from './components/DropZone';
 import { MetadataPanel } from './components/MetadataPanel';
+import { MeasurementPanel } from './components/MeasurementPanel';
+import { ViewportLayout } from './components/ViewportLayout';
 import { ToastContainer } from './components/Toast';
 import { SeriesPanel } from './components/SeriesPanel';
 import { loadAndGroupFiles } from './core/seriesManager';
 import { setActiveTool } from './core/toolSetup';
+import { undo, redo, clearHistory } from './core/annotationHistory';
 import { useToast } from './hooks/useToast';
-import type { ActiveTool, WLPreset, DicomMetadata, SeriesInfo } from './types/dicom';
+import type { ActiveTool, WLPreset, DicomMetadata, SeriesInfo, LayoutType } from './types/dicom';
 import './styles/globals.css';
 
 const appStyle: React.CSSProperties = {
@@ -77,6 +80,9 @@ const errorStyle: React.CSSProperties = {
   color: 'var(--accent-error)',
 };
 
+const MIN_FPS = 1;
+const MAX_FPS = 60;
+
 function App() {
   const { ready, error } = useCornerstone();
   const [filename, setFilename] = useState<string | null>(null);
@@ -96,6 +102,28 @@ function App() {
   const [activeSeriesIndex, setActiveSeriesIndex] = useState(0);
   const [currentSlice, setCurrentSlice] = useState(0);
   const [totalSlices, setTotalSlices] = useState(0);
+
+  // New state for Groups 3-4
+  const [layout, setLayout] = useState<LayoutType>('1x1');
+  const [cineActive, setCineActive] = useState(false);
+  const [cineFps, setCineFps] = useState(10);
+  const [invertActive, setInvertActive] = useState(false);
+  const [flipH, setFlipH] = useState(false);
+  const [flipV, setFlipV] = useState(false);
+  const [rotation, setRotation] = useState(0);
+
+  const cineIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cineFpsRef = useRef(cineFps);
+  cineFpsRef.current = cineFps;
+  const cineActiveRef = useRef(cineActive);
+  cineActiveRef.current = cineActive;
+
+  // Helper: get the active viewport
+  const getViewport = useCallback(() => {
+    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
+    if (!engine) return null;
+    return engine.getStackViewport(VIEWPORT_ID);
+  }, []);
 
   // Callbacks from Viewport component
   const handleImageRendered = useCallback((imageId: string) => {
@@ -198,6 +226,7 @@ function App() {
     setImageIds(newSeriesList[0].imageIds);
     setMetadata(null);
     setViewportError(null);
+    clearHistory();
 
     const totalFiles = newSeriesList.reduce((sum, s) => sum + s.imageCount, 0);
     if (files.length === 1) {
@@ -226,26 +255,22 @@ function App() {
   const handlePrevSlice = useCallback(() => {
     if (currentSlice <= 0) return;
     const newIdx = currentSlice - 1;
-    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
-    if (!engine) return;
-    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    const viewport = getViewport();
     if (!viewport) return;
     viewport.setImageIdIndex(newIdx).then(() => {
       viewport.render();
     }).catch(console.error);
-  }, [currentSlice]);
+  }, [currentSlice, getViewport]);
 
   const handleNextSlice = useCallback(() => {
     if (currentSlice >= totalSlices - 1) return;
     const newIdx = currentSlice + 1;
-    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
-    if (!engine) return;
-    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    const viewport = getViewport();
     if (!viewport) return;
     viewport.setImageIdIndex(newIdx).then(() => {
       viewport.render();
     }).catch(console.error);
-  }, [currentSlice, totalSlices]);
+  }, [currentSlice, totalSlices, getViewport]);
 
   const handleReset = useCallback(() => {
     // Clear all annotations
@@ -254,14 +279,21 @@ function App() {
     } catch (e) {
       console.warn('Failed to remove annotations:', e);
     }
+    clearHistory();
+    // Reset transforms
+    setFlipH(false);
+    setFlipV(false);
+    setRotation(0);
+    setInvertActive(false);
     // Reset camera
-    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
-    if (!engine) return;
-    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    const viewport = getViewport();
     if (!viewport) return;
     viewport.resetCamera();
+    viewport.setProperties({ invert: false });
+    (viewport as unknown as { setRotation: (r: number) => void }).setRotation(0);
+    viewport.setCamera({ flipHorizontal: false, flipVertical: false });
     viewport.render();
-  }, []);
+  }, [getViewport]);
 
   const handleVoiChange = useCallback((wc: number, ww: number) => {
     setWindowCenter(wc);
@@ -277,6 +309,12 @@ function App() {
       length: 'Length',
       angle: 'Angle',
       arrowAnnotate: 'ArrowAnnotate',
+      circleROI: 'CircleROI',
+      ellipticalROI: 'EllipticalROI',
+      rectangleROI: 'RectangleROI',
+      freehandROI: 'PlanarFreehandROI',
+      probe: 'Probe',
+      bidirectional: 'Bidirectional',
     };
     setActiveTool(toolNameMap[tool]);
     setActiveToolState(tool);
@@ -285,9 +323,7 @@ function App() {
   const handlePresetSelect = useCallback((preset: WLPreset) => {
     setWindowCenter(preset.windowCenter);
     setWindowWidth(preset.windowWidth);
-    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
-    if (!engine) return;
-    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    const viewport = getViewport();
     if (!viewport) return;
     viewport.setProperties({
       voiRange: {
@@ -296,16 +332,14 @@ function App() {
       },
     });
     viewport.render();
-  }, []);
+  }, [getViewport]);
 
   const handleFitToWindow = useCallback(() => {
-    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
-    if (!engine) return;
-    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    const viewport = getViewport();
     if (!viewport) return;
     viewport.resetCamera();
     viewport.render();
-  }, []);
+  }, [getViewport]);
 
   const handleToggleLeftPanel = useCallback(() => {
     setLeftPanelOpen((prev) => !prev);
@@ -317,13 +351,263 @@ function App() {
 
   const handleSliceSelect = useCallback((index: number) => {
     setCurrentSlice(index);
-    const engine = getRenderingEngine(RENDERING_ENGINE_ID);
-    if (!engine) return;
-    const viewport = engine.getStackViewport(VIEWPORT_ID);
+    const viewport = getViewport();
     if (!viewport) return;
     viewport.setImageIdIndex(index).then(() => {
       viewport.render();
     }).catch(console.error);
+  }, [getViewport]);
+
+  // Group 3: Image Manipulation handlers
+  const handleFlipH = useCallback(() => {
+    const viewport = getViewport();
+    if (!viewport) return;
+    const newFlipH = !flipH;
+    setFlipH(newFlipH);
+    viewport.setCamera({ flipHorizontal: newFlipH });
+    viewport.render();
+  }, [flipH, getViewport]);
+
+  const handleFlipV = useCallback(() => {
+    const viewport = getViewport();
+    if (!viewport) return;
+    const newFlipV = !flipV;
+    setFlipV(newFlipV);
+    viewport.setCamera({ flipVertical: newFlipV });
+    viewport.render();
+  }, [flipV, getViewport]);
+
+  const handleRotateCW = useCallback(() => {
+    const viewport = getViewport();
+    if (!viewport) return;
+    const newRotation = (rotation + 90) % 360;
+    setRotation(newRotation);
+    (viewport as unknown as { setRotation: (r: number) => void }).setRotation(newRotation);
+    viewport.render();
+  }, [rotation, getViewport]);
+
+  const handleRotateCCW = useCallback(() => {
+    const viewport = getViewport();
+    if (!viewport) return;
+    const newRotation = (rotation - 90 + 360) % 360;
+    setRotation(newRotation);
+    (viewport as unknown as { setRotation: (r: number) => void }).setRotation(newRotation);
+    viewport.render();
+  }, [rotation, getViewport]);
+
+  const handleInvert = useCallback(() => {
+    const viewport = getViewport();
+    if (!viewport) return;
+    const newInvert = !invertActive;
+    setInvertActive(newInvert);
+    viewport.setProperties({ invert: newInvert });
+    viewport.render();
+  }, [invertActive, getViewport]);
+
+  const stopCine = useCallback(() => {
+    if (cineIntervalRef.current) {
+      clearInterval(cineIntervalRef.current);
+      cineIntervalRef.current = null;
+    }
+    setCineActive(false);
+  }, []);
+
+  const startCine = useCallback(() => {
+    if (cineIntervalRef.current) {
+      clearInterval(cineIntervalRef.current);
+    }
+    const interval = Math.round(1000 / cineFpsRef.current);
+    cineIntervalRef.current = setInterval(() => {
+      const viewport = getViewport();
+      if (!viewport) return;
+      const ids = viewport.getImageIds();
+      if (ids.length === 0) return;
+      const idx = viewport.getCurrentImageIdIndex();
+      const next = (idx + 1) % ids.length;
+      viewport.setImageIdIndex(next).then(() => viewport.render()).catch(() => {});
+    }, interval);
+    setCineActive(true);
+  }, [getViewport]);
+
+  const handleCineToggle = useCallback(() => {
+    if (cineActiveRef.current) {
+      stopCine();
+    } else {
+      startCine();
+    }
+  }, [startCine, stopCine]);
+
+  const handleCineFpsIncrease = useCallback(() => {
+    setCineFps((prev) => {
+      const next = Math.min(prev + 5, MAX_FPS);
+      cineFpsRef.current = next;
+      if (cineActiveRef.current) {
+        // Restart with new FPS
+        if (cineIntervalRef.current) clearInterval(cineIntervalRef.current);
+        const interval = Math.round(1000 / next);
+        cineIntervalRef.current = setInterval(() => {
+          const viewport = getViewport();
+          if (!viewport) return;
+          const ids = viewport.getImageIds();
+          if (ids.length === 0) return;
+          const idx = viewport.getCurrentImageIdIndex();
+          const nextIdx = (idx + 1) % ids.length;
+          viewport.setImageIdIndex(nextIdx).then(() => viewport.render()).catch(() => {});
+        }, interval);
+      }
+      return next;
+    });
+  }, [getViewport]);
+
+  const handleCineFpsDecrease = useCallback(() => {
+    setCineFps((prev) => {
+      const next = Math.max(prev - 5, MIN_FPS);
+      cineFpsRef.current = next;
+      if (cineActiveRef.current) {
+        if (cineIntervalRef.current) clearInterval(cineIntervalRef.current);
+        const interval = Math.round(1000 / next);
+        cineIntervalRef.current = setInterval(() => {
+          const viewport = getViewport();
+          if (!viewport) return;
+          const ids = viewport.getImageIds();
+          if (ids.length === 0) return;
+          const idx = viewport.getCurrentImageIdIndex();
+          const nextIdx = (idx + 1) % ids.length;
+          viewport.setImageIdIndex(nextIdx).then(() => viewport.render()).catch(() => {});
+        }, interval);
+      }
+      return next;
+    });
+  }, [getViewport]);
+
+  const handleAutoWL = useCallback(() => {
+    // Placeholder: Wasm integration pending
+    addToast('自動WL/WW: Wasm連携は後ほど実装されます', 'error');
+  }, [addToast]);
+
+  const handleScreenshot = useCallback(() => {
+    const viewport = getViewport();
+    if (!viewport) {
+      addToast('ビューポートが利用できません', 'error');
+      return;
+    }
+    try {
+      const canvas = viewport.getCanvas();
+      const dataUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'dicom-screenshot.png';
+      a.click();
+    } catch (e) {
+      addToast('スクリーンショットの取得に失敗しました', 'error');
+      console.error(e);
+    }
+  }, [getViewport, addToast]);
+
+  const handlePrint = useCallback(() => {
+    const viewport = getViewport();
+    if (!viewport) {
+      addToast('ビューポートが利用できません', 'error');
+      return;
+    }
+    try {
+      const canvas = viewport.getCanvas();
+      const dataUrl = canvas.toDataURL('image/png');
+      const patientName = metadata?.patient.name ?? '';
+      const patientId = metadata?.patient.id ?? '';
+      const studyDate = metadata?.study.date ?? '';
+      const win = window.open('', '_blank');
+      if (!win) {
+        addToast('ポップアップがブロックされました', 'error');
+        return;
+      }
+      win.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>DICOM Print</title>
+          <style>
+            body { margin: 0; padding: 20px; font-family: sans-serif; background: #fff; color: #000; }
+            .info { margin-bottom: 12px; font-size: 13px; }
+            img { max-width: 100%; display: block; }
+          </style>
+        </head>
+        <body>
+          <div class="info">
+            <b>患者:</b> ${patientName} (ID: ${patientId})
+            &nbsp;&nbsp;
+            <b>検査日:</b> ${studyDate}
+          </div>
+          <img src="${dataUrl}" />
+        </body>
+        </html>
+      `);
+      win.document.close();
+      win.focus();
+      win.print();
+    } catch (e) {
+      addToast('印刷の準備に失敗しました', 'error');
+      console.error(e);
+    }
+  }, [getViewport, metadata, addToast]);
+
+  const handleLayoutChange = useCallback((newLayout: LayoutType) => {
+    stopCine();
+    setLayout(newLayout);
+  }, [stopCine]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (e.ctrlKey && e.key === 'y') {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case 'h': handleFlipH(); break;
+        case 'v': handleFlipV(); break;
+        case 'i': handleInvert(); break;
+        case ' ':
+          e.preventDefault();
+          handleCineToggle();
+          break;
+        case '+':
+        case '=':
+          handleCineFpsIncrease();
+          break;
+        case '-':
+          handleCineFpsDecrease();
+          break;
+        case 's': handleScreenshot(); break;
+        case '1': handleLayoutChange('1x1'); break;
+        case '2': handleLayoutChange('1x2'); break;
+        case '4': handleLayoutChange('2x2'); break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    handleFlipH, handleFlipV, handleInvert, handleCineToggle,
+    handleCineFpsIncrease, handleCineFpsDecrease, handleScreenshot,
+    handleLayoutChange,
+  ]);
+
+  // Cleanup cine on unmount
+  useEffect(() => {
+    return () => {
+      if (cineIntervalRef.current) clearInterval(cineIntervalRef.current);
+    };
   }, []);
 
   if (error) {
@@ -357,6 +641,9 @@ function App() {
         rightPanelOpen={rightPanelOpen}
         currentSlice={currentSlice}
         totalSlices={totalSlices}
+        cineActive={cineActive}
+        cineFps={cineFps}
+        layout={layout}
         onToolChange={handleToolChange}
         onPresetSelect={handlePresetSelect}
         onFitToWindow={handleFitToWindow}
@@ -365,6 +652,18 @@ function App() {
         onPrevSlice={handlePrevSlice}
         onNextSlice={handleNextSlice}
         onReset={handleReset}
+        onFlipH={handleFlipH}
+        onFlipV={handleFlipV}
+        onRotateCW={handleRotateCW}
+        onRotateCCW={handleRotateCCW}
+        onInvert={handleInvert}
+        onCineToggle={handleCineToggle}
+        onCineFpsIncrease={handleCineFpsIncrease}
+        onCineFpsDecrease={handleCineFpsDecrease}
+        onAutoWL={handleAutoWL}
+        onScreenshot={handleScreenshot}
+        onPrint={handlePrint}
+        onLayoutChange={handleLayoutChange}
       />
       <div style={bodyStyle}>
         {leftPanelOpen && (
@@ -379,7 +678,7 @@ function App() {
           </aside>
         )}
         <main style={centerPanelStyle}>
-          {ready && (
+          {ready && layout === '1x1' && (
             <Viewport
               imageIds={imageIds}
               onVoiChange={handleVoiChange}
@@ -387,6 +686,17 @@ function App() {
               onImageLoadFailed={handleImageLoadFailed}
               onSliceChange={handleSliceChange}
               error={viewportError}
+              metadata={metadata}
+              windowCenter={windowCenter}
+              windowWidth={windowWidth}
+            />
+          )}
+          {ready && layout !== '1x1' && (
+            <ViewportLayout
+              layout={layout}
+              seriesList={seriesList}
+              onVoiChange={handleVoiChange}
+              onImageRendered={handleImageRendered}
             />
           )}
           <DropZone
@@ -397,6 +707,7 @@ function App() {
         {rightPanelOpen && (
           <aside style={rightPanelStyle}>
             <MetadataPanel metadata={metadata} />
+            <MeasurementPanel />
           </aside>
         )}
       </div>
