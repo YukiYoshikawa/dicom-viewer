@@ -52,7 +52,10 @@ export const WL_PRESETS: WLPreset[] = [
 
 export type ActiveTool =
   | 'windowLevel' | 'zoom' | 'pan' | 'rotate'
-  | 'length' | 'angle' | 'arrowAnnotate';
+  | 'length' | 'angle' | 'arrowAnnotate'
+  | 'circleROI' | 'ellipticalROI' | 'rectangleROI' | 'freehandROI' | 'probe' | 'bidirectional';
+
+export type LayoutType = '1x1' | '1x2' | '2x2';
 
 export interface SeriesInfo {
   seriesInstanceUid: string;

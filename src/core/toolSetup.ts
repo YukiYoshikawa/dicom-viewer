@@ -9,6 +9,12 @@ import {
   LengthTool,
   AngleTool,
   ArrowAnnotateTool,
+  CircleROITool,
+  EllipticalROITool,
+  RectangleROITool,
+  PlanarFreehandROITool,
+  ProbeTool,
+  BidirectionalTool,
   Enums as csToolsEnums,
 } from '@cornerstonejs/tools';
 
@@ -27,6 +33,12 @@ export function setupTools(): void {
   addTool(LengthTool);
   addTool(AngleTool);
   addTool(ArrowAnnotateTool);
+  addTool(CircleROITool);
+  addTool(EllipticalROITool);
+  addTool(RectangleROITool);
+  addTool(PlanarFreehandROITool);
+  addTool(ProbeTool);
+  addTool(BidirectionalTool);
 
   toolGroupCreated = true;
 }
@@ -52,6 +64,12 @@ export function createToolGroup(
   toolGroup.addTool(LengthTool.toolName);
   toolGroup.addTool(AngleTool.toolName);
   toolGroup.addTool(ArrowAnnotateTool.toolName);
+  toolGroup.addTool(CircleROITool.toolName);
+  toolGroup.addTool(EllipticalROITool.toolName);
+  toolGroup.addTool(RectangleROITool.toolName);
+  toolGroup.addTool(PlanarFreehandROITool.toolName);
+  toolGroup.addTool(ProbeTool.toolName);
+  toolGroup.addTool(BidirectionalTool.toolName);
 
   toolGroup.addViewport(viewportId, renderingEngineId);
 
@@ -90,6 +108,12 @@ export function setActiveTool(toolName: string): void {
     LengthTool.toolName,
     AngleTool.toolName,
     ArrowAnnotateTool.toolName,
+    CircleROITool.toolName,
+    EllipticalROITool.toolName,
+    RectangleROITool.toolName,
+    PlanarFreehandROITool.toolName,
+    ProbeTool.toolName,
+    BidirectionalTool.toolName,
   ];
 
   for (const name of tools) {
